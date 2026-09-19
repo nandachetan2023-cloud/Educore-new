@@ -36,13 +36,14 @@ export default function SuperadminOverview() {
   const growth = tenants.slice(0, 8).reverse().map((t, i) => ({ label: t.name, value: i + 1 }));
 
   return <div className="min-h-[calc(100vh-68px)] bg-[#f7f9fb] text-slate-900">
-    <div className="mx-auto grid max-w-[1440px] lg:grid-cols-[220px_1fr]">
-      <aside className="hidden min-h-[calc(100vh-68px)] bg-slate-950 px-3 py-7 text-slate-300 lg:block">
+    <div>
+      <aside className="hidden bg-slate-950 px-3 py-7 text-slate-300 lg:fixed lg:inset-y-[68px] lg:left-0 lg:block lg:w-[220px] lg:overflow-y-auto">
         <div className="px-3 pb-8"><p className="text-lg font-black text-white">Partner Portal</p><p className="mt-1 text-[10px] font-bold uppercase tracking-[.18em] text-slate-500">Global admin</p></div>
         <nav className="space-y-1"><SideLink active href="/dashboard/superadmin" icon={<LayoutDashboard size={18} />} label="Dashboard" /><SideLink href="/dashboard/superadmin/tenants" icon={<Building2 size={18} />} label="Sub-accounts" /><SideLink href="/dashboard/superadmin/plans" icon={<CreditCard size={18} />} label="Plans" /><SideLink href="/dashboard/admin/branding" icon={<Palette size={18} />} label="Branding" /><SideLink href="/dashboard/admin/admins" icon={<Users size={18} />} label="Account" /></nav>
         <div className="mt-12 border-t border-white/10 px-3 pt-5 text-xs text-slate-500">Signed in as<br /><span className="font-medium text-slate-200">{user?.name ?? 'Admin user'}</span></div>
       </aside>
-      <main className="min-w-0 px-4 py-7 sm:px-7 lg:px-10">
+      <main className="min-w-0 px-4 py-7 sm:px-7 lg:ml-[220px] lg:px-10">
+        <div className="mx-auto max-w-[1220px]">
         <header className="mb-8 flex flex-wrap items-center justify-between gap-4"><div><p className="text-sm font-medium text-blue-700">Platform operations</p><h1 className="mt-1 text-3xl font-extrabold tracking-tight">Partner Dashboard</h1></div><div className="flex gap-2"><Link href="/dashboard/superadmin/tenants" className="btn-primary inline-flex items-center gap-2"><Plus size={17} /> Create sub-account</Link><Link href="/dashboard/admin/branding" className="btn-ghost"><Settings size={17} /></Link></div></header>
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4"><Kpi icon={<CreditCard size={19} />} label="Monthly recurring revenue" value={money.format(stats.mrr / 100)} detail="Across active subscriptions" tone="blue" /><Kpi icon={<Building2 size={19} />} label="Active sub-accounts" value={String(stats.active)} detail={`${tenants.length} total workspaces`} tone="slate" /><Kpi icon={<Users size={19} />} label="Pending setup" value={String(stats.pending)} detail="Awaiting account activation" tone="violet" /><Kpi icon={<AlertCircle size={19} />} label="Needs attention" value={String(stats.attention)} detail="Past due or suspended" tone="red" /></section>
         <section className="mt-6 grid gap-6 xl:grid-cols-3">
@@ -50,6 +51,7 @@ export default function SuperadminOverview() {
           <div className="space-y-6"><div className="overflow-hidden rounded-xl bg-blue-700 p-6 text-white"><Palette size={27} className="text-blue-200" /><h2 className="mt-8 text-xl font-bold">Brand settings</h2><p className="mt-2 text-sm leading-6 text-blue-100">Customize the identity customers see across your learning platform.</p><Link href="/dashboard/admin/branding" className="mt-6 inline-flex rounded-lg bg-white px-4 py-2.5 text-sm font-bold text-blue-700">Customize UI</Link></div><div className="rounded-xl border border-slate-200 bg-white p-6"><h2 className="font-bold">Quick actions</h2><QuickLink href="/dashboard/superadmin/tenants" icon={<Building2 size={17} />} label="Manage sub-accounts" /><QuickLink href="/dashboard/superadmin/plans" icon={<CreditCard size={17} />} label="Manage plans" /><QuickLink href="/dashboard/admin/admins" icon={<Users size={17} />} label="Platform staff" /></div></div>
         </section>
         <section className="mt-6 rounded-xl border border-slate-200 bg-white p-6"><div className="flex items-start justify-between"><div><h2 className="font-bold">Workspace growth</h2><p className="mt-1 text-sm text-slate-500">Cumulative view of recently created workspaces.</p></div><BarChart3 size={20} className="text-blue-600" /></div><div className="mt-5 text-blue-600"><LineChart data={growth} height={150} color="#2563eb" /></div></section>
+        </div>
       </main>
     </div>
   </div>;
