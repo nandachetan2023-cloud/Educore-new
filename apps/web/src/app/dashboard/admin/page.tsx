@@ -33,6 +33,8 @@ export default function AdminConsole() {
     if (authLoading) return;
     if (!user) { router.push('/login?next=/dashboard/admin'); return; }
     if (user.principal !== 'admin') { router.push('/dashboard'); return; }
+    // Superadmin has no tenant to moderate here — send them to the platform console.
+    if (user.adminRole === 'super_admin') { router.push('/dashboard/superadmin'); return; }
     api('/dashboard/admin').then(setStats).catch(() => {});
     api<Analytics>('/dashboard/admin/analytics').then(setAnalytics).catch(() => {});
   }, [user, authLoading]);

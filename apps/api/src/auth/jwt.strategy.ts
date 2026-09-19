@@ -21,6 +21,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       principal: payload.principal,
       email: payload.email,
       adminRole: payload.adminRole,
+      tenantId: payload.tenantId,
     };
   }
 }

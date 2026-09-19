@@ -65,6 +65,15 @@ export class AdminsService {
       const superCount = await this.prisma.admin.count({ where: { role: 'super_admin' } });
       if (superCount <= 1) throw new BadRequestException('Cannot demote the last super-admin');
     }
+    // A tenant-owning admin can't become a tenant-less platform superadmin
+    // without first being detached from the tenant they own — otherwise the
+    // tenant is left without a login. Detaching ownership isn't handled by
+    // this endpoint (it's a Tenants-console concern), so just refuse.
+    if (role === 'super_admin' && admin.tenantId != null) {
+      throw new BadRequestException(
+        'This admin owns a tenant and cannot be made a platform superadmin. Detach them from their tenant first.',
+      );
+    }
     return this.prisma.admin.update({
       where: { id },
       data: { role },

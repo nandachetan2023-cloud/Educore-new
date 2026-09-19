@@ -9,6 +9,14 @@
 // can uniformly inject `where: { tenantId }` without per-model join logic.
 // `Admin`, `Tenant`, `Plan`, and `Subscription` are the platform-level
 // exceptions — they are what the Superadmin manages *across* tenants.
+//
+// `tenantId Int @default(0)` on every scoped model is a TypeScript-ergonomics
+// shim, not a real "tenant 0": it makes `tenantId` optional in Prisma's
+// generated `*CreateInput` types so the ~30 existing `.create()`/`.upsert()`
+// call sites across the app don't all need a manual edit. The extension
+// always overwrites it with the real tenant id from request context before
+// the query runs; `0` is only ever persisted if code bypasses the extension
+// (RAW_PRISMA) without explicitly setting tenantId itself, which is a bug.
 
 generator client {
   provider = "prisma-client-js"
@@ -200,7 +208,7 @@ model Admin {
 
 model User {
   id              Int           @id @default(autoincrement())
-  tenantId        Int           @map("tenant_id")
+  tenantId        Int           @default(0) @map("tenant_id")
   role            UserRole
   image           String        @default("/default-files/avatar.png")
   name            String
@@ -242,7 +250,7 @@ model User {
 // ─────────────────────────────────────────────────────────────
 model CourseLanguage {
   id        Int      @id @default(autoincrement())
-  tenantId  Int      @map("tenant_id")
+  tenantId  Int      @default(0) @map("tenant_id")
   name      String
   slug      String
   createdAt DateTime @default(now()) @map("created_at")
@@ -257,7 +265,7 @@ model CourseLanguage {
 
 model CourseLevel {
   id        Int      @id @default(autoincrement())
-  tenantId  Int      @map("tenant_id")
+  tenantId  Int      @default(0) @map("tenant_id")
   name      String
   slug      String
   createdAt DateTime @default(now()) @map("created_at")
@@ -272,7 +280,7 @@ model CourseLevel {
 
 model CourseCategory {
   id             Int      @id @default(autoincrement())
-  tenantId       Int      @map("tenant_id")
+  tenantId       Int      @default(0) @map("tenant_id")
   image          String?
   icon           String?
   name           String
@@ -298,7 +306,7 @@ model CourseCategory {
 // ─────────────────────────────────────────────────────────────
 model Course {
   id                 Int            @id @default(autoincrement())
-  tenantId           Int            @map("tenant_id")
+  tenantId           Int            @default(0) @map("tenant_id")
   instructorId       Int            @map("instructor_id")
   categoryId         Int?           @map("category_id")
   courseType         String         @default("course") @map("course_type")
@@ -342,7 +350,7 @@ model Course {
 
 model CourseChapter {
   id           Int      @id @default(autoincrement())
-  tenantId     Int      @map("tenant_id")
+  tenantId     Int      @default(0) @map("tenant_id")
   title        String
   instructorId Int      @map("instructor_id")
   courseId     Int      @map("course_id")
@@ -361,7 +369,7 @@ model CourseChapter {
 
 model CourseChapterLession {
   id           Int          @id @default(autoincrement())
-  tenantId     Int          @map("tenant_id")
+  tenantId     Int          @default(0) @map("tenant_id")
   title        String
   slug         String
   description  String?      @db.Text
@@ -395,7 +403,7 @@ model CourseChapterLession {
 // ─────────────────────────────────────────────────────────────
 model Cart {
   id        Int      @id @default(autoincrement())
-  tenantId  Int      @map("tenant_id")
+  tenantId  Int      @default(0) @map("tenant_id")
   userId    Int      @map("user_id")
   courseId  Int      @map("course_id")
   createdAt DateTime @default(now()) @map("created_at")
@@ -410,7 +418,7 @@ model Cart {
 
 model Order {
   id            Int         @id @default(autoincrement())
-  tenantId      Int         @map("tenant_id")
+  tenantId      Int         @default(0) @map("tenant_id")
   invoiceId     String      @map("invoice_id")
   buyerId       Int         @map("buyer_id")
   status        OrderStatus @default(pending)
@@ -435,7 +443,7 @@ model Order {
 
 model OrderItem {
   id             Int      @id @default(autoincrement())
-  tenantId       Int      @map("tenant_id")
+  tenantId       Int      @default(0) @map("tenant_id")
   orderId        Int      @map("order_id")
   courseId       Int      @map("course_id")
   qty            Int      @default(1)
@@ -454,7 +462,7 @@ model OrderItem {
 
 model Enrollment {
   id           Int      @id @default(autoincrement())
-  tenantId     Int      @map("tenant_id")
+  tenantId     Int      @default(0) @map("tenant_id")
   userId       Int      @map("user_id")
   courseId     Int      @map("course_id")
   instructorId Int      @map("instructor_id")
@@ -476,7 +484,7 @@ model Enrollment {
 // ─────────────────────────────────────────────────────────────
 model PaymentSetting {
   id        Int      @id @default(autoincrement())
-  tenantId  Int      @map("tenant_id")
+  tenantId  Int      @default(0) @map("tenant_id")
   key       String?
   value     String?  @db.Text
   createdAt DateTime @default(now()) @map("created_at")
@@ -488,7 +496,7 @@ model PaymentSetting {
 
 model PayoutGateway {
   id          Int      @id @default(autoincrement())
-  tenantId    Int      @map("tenant_id")
+  tenantId    Int      @default(0) @map("tenant_id")
   name        String
   description String   @db.Text
   status      Boolean  @default(true)
@@ -501,7 +509,7 @@ model PayoutGateway {
 
 model InstructorPayoutInformation {
   id           Int      @id @default(autoincrement())
-  tenantId     Int      @map("tenant_id")
+  tenantId     Int      @default(0) @map("tenant_id")
   instructorId Int      @map("instructor_id")
   gateway      String
   information  String   @db.Text
@@ -516,7 +524,7 @@ model InstructorPayoutInformation {
 
 model Withdraw {
   id            Int            @id @default(autoincrement())
-  tenantId      Int            @map("tenant_id")
+  tenantId      Int            @default(0) @map("tenant_id")
   instructorId  Int            @map("instructor_id")
   amount        Float
   status        WithdrawStatus @default(pending)
@@ -535,7 +543,7 @@ model Withdraw {
 // ─────────────────────────────────────────────────────────────
 model WatchHistory {
   id                  Int      @id @default(autoincrement())
-  tenantId            Int      @map("tenant_id")
+  tenantId            Int      @default(0) @map("tenant_id")
   userId              Int      @map("user_id")
   courseId            Int      @map("course_id")
   chapterId           Int      @map("chapter_id")
@@ -554,7 +562,7 @@ model WatchHistory {
 
 model Review {
   id        Int      @id @default(autoincrement())
-  tenantId  Int      @map("tenant_id")
+  tenantId  Int      @default(0) @map("tenant_id")
   userId    Int      @map("user_id")
   courseId  Int      @map("course_id")
   review    String   @db.Text
@@ -575,7 +583,7 @@ model Review {
 // ─────────────────────────────────────────────────────────────
 model CertificateBuilder {
   id          Int      @id @default(autoincrement())
-  tenantId    Int      @map("tenant_id")
+  tenantId    Int      @default(0) @map("tenant_id")
   background  String?
   title       String?
   subTitle    String?  @map("sub_title")
@@ -590,7 +598,7 @@ model CertificateBuilder {
 
 model CertificateBuilderItem {
   id        Int      @id @default(autoincrement())
-  tenantId  Int      @map("tenant_id")
+  tenantId  Int      @default(0) @map("tenant_id")
   elementId String?  @map("element_id")
   xPosition String?  @map("x_position")
   yPosition String?  @map("y_position")
@@ -610,7 +618,7 @@ model CertificateBuilderItem {
 // ─────────────────────────────────────────────────────────────
 model MailQueueJob {
   id        Int      @id @default(autoincrement())
-  tenantId  Int      @map("tenant_id")
+  tenantId  Int      @default(0) @map("tenant_id")
   to        String
   subject   String
   html      String   @db.Text
@@ -639,7 +647,7 @@ model Setting {
 
 model Hero {
   id        Int      @id @default(autoincrement())
-  tenantId  Int      @map("tenant_id")
+  tenantId  Int      @default(0) @map("tenant_id")
   title     String?  @db.Text
   subTitle  String?  @map("sub_title") @db.Text
   image     String?
@@ -652,7 +660,7 @@ model Hero {
 
 model Feature {
   id          Int      @id @default(autoincrement())
-  tenantId    Int      @map("tenant_id")
+  tenantId    Int      @default(0) @map("tenant_id")
   icon        String?
   title       String?
   description String?  @db.Text
@@ -665,7 +673,7 @@ model Feature {
 
 model AboutUsSection {
   id          Int      @id @default(autoincrement())
-  tenantId    Int      @map("tenant_id")
+  tenantId    Int      @default(0) @map("tenant_id")
   title       String?
   subTitle    String?  @map("sub_title") @db.Text
   description String?  @db.Text
@@ -679,7 +687,7 @@ model AboutUsSection {
 
 model LatestCourseSection {
   id        Int      @id @default(autoincrement())
-  tenantId  Int      @map("tenant_id")
+  tenantId  Int      @default(0) @map("tenant_id")
   title     String?
   subTitle  String?  @map("sub_title") @db.Text
   createdAt DateTime @default(now()) @map("created_at")
@@ -691,7 +699,7 @@ model LatestCourseSection {
 
 model Newsletter {
   id        Int      @id @default(autoincrement())
-  tenantId  Int      @map("tenant_id")
+  tenantId  Int      @default(0) @map("tenant_id")
   email     String
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -702,7 +710,7 @@ model Newsletter {
 
 model BecomeInstructorSection {
   id          Int      @id @default(autoincrement())
-  tenantId    Int      @map("tenant_id")
+  tenantId    Int      @default(0) @map("tenant_id")
   title       String?
   subTitle    String?  @map("sub_title") @db.Text
   description String?  @db.Text
@@ -716,7 +724,7 @@ model BecomeInstructorSection {
 
 model VideoSection {
   id        Int      @id @default(autoincrement())
-  tenantId  Int      @map("tenant_id")
+  tenantId  Int      @default(0) @map("tenant_id")
   title     String?
   subTitle  String?  @map("sub_title") @db.Text
   videoUrl  String?  @map("video_url")
@@ -730,7 +738,7 @@ model VideoSection {
 
 model Brand {
   id        Int      @id @default(autoincrement())
-  tenantId  Int      @map("tenant_id")
+  tenantId  Int      @default(0) @map("tenant_id")
   image     String?
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
@@ -741,7 +749,7 @@ model Brand {
 
 model FeaturedInstructor {
   id           Int      @id @default(autoincrement())
-  tenantId     Int      @map("tenant_id")
+  tenantId     Int      @default(0) @map("tenant_id")
   instructorId Int?     @map("instructor_id")
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
@@ -752,7 +760,7 @@ model FeaturedInstructor {
 
 model Testimonial {
   id        Int      @id @default(autoincrement())
-  tenantId  Int      @map("tenant_id")
+  tenantId  Int      @default(0) @map("tenant_id")
   name      String?
   headline  String?
   image     String?
@@ -767,7 +775,7 @@ model Testimonial {
 
 model Counter {
   id        Int      @id @default(autoincrement())
-  tenantId  Int      @map("tenant_id")
+  tenantId  Int      @default(0) @map("tenant_id")
   title     String?
   number    String?
   createdAt DateTime @default(now()) @map("created_at")
@@ -779,7 +787,7 @@ model Counter {
 
 model Contact {
   id        Int      @id @default(autoincrement())
-  tenantId  Int      @map("tenant_id")
+  tenantId  Int      @default(0) @map("tenant_id")
   name      String
   email     String
   subject   String?
@@ -793,7 +801,7 @@ model Contact {
 
 model ContactSetting {
   id        Int      @id @default(autoincrement())
-  tenantId  Int      @map("tenant_id")
+  tenantId  Int      @default(0) @map("tenant_id")
   image     String?
   mapUrl    String?  @map("map_url") @db.Text
   createdAt DateTime @default(now()) @map("created_at")
@@ -805,7 +813,7 @@ model ContactSetting {
 
 model TopBar {
   id        Int      @id @default(autoincrement())
-  tenantId  Int      @map("tenant_id")
+  tenantId  Int      @default(0) @map("tenant_id")
   email     String?
   phone     String?
   text      String?  @db.Text
@@ -819,7 +827,7 @@ model TopBar {
 
 model Footer {
   id          Int      @id @default(autoincrement())
-  tenantId    Int      @map("tenant_id")
+  tenantId    Int      @default(0) @map("tenant_id")
   description String?  @db.Text
   copyright   String?
   logo        String?
@@ -832,7 +840,7 @@ model Footer {
 
 model SocialLink {
   id        Int      @id @default(autoincrement())
-  tenantId  Int      @map("tenant_id")
+  tenantId  Int      @default(0) @map("tenant_id")
   icon      String?
   url       String?
   createdAt DateTime @default(now()) @map("created_at")
@@ -844,7 +852,7 @@ model SocialLink {
 
 model FooterColumnOne {
   id        Int      @id @default(autoincrement())
-  tenantId  Int      @map("tenant_id")
+  tenantId  Int      @default(0) @map("tenant_id")
   title     String?
   url       String?
   createdAt DateTime @default(now()) @map("created_at")
@@ -856,7 +864,7 @@ model FooterColumnOne {
 
 model FooterColumnTwo {
   id        Int      @id @default(autoincrement())
-  tenantId  Int      @map("tenant_id")
+  tenantId  Int      @default(0) @map("tenant_id")
   title     String?
   url       String?
   createdAt DateTime @default(now()) @map("created_at")
@@ -868,7 +876,7 @@ model FooterColumnTwo {
 
 model CustomPage {
   id        Int      @id @default(autoincrement())
-  tenantId  Int      @map("tenant_id")
+  tenantId  Int      @default(0) @map("tenant_id")
   title     String
   slug      String
   content   String?  @db.Text
@@ -886,7 +894,7 @@ model CustomPage {
 // ─────────────────────────────────────────────────────────────
 model BlogCategory {
   id        Int      @id @default(autoincrement())
-  tenantId  Int      @map("tenant_id")
+  tenantId  Int      @default(0) @map("tenant_id")
   name      String
   slug      String
   status    Boolean
@@ -901,7 +909,7 @@ model BlogCategory {
 
 model Blog {
   id               Int      @id @default(autoincrement())
-  tenantId         Int      @map("tenant_id")
+  tenantId         Int      @default(0) @map("tenant_id")
   categoryId       Int?     @map("category_id")
   title            String
   slug             String
@@ -923,7 +931,7 @@ model Blog {
 
 model BlogComment {
   id        Int      @id @default(autoincrement())
-  tenantId  Int      @map("tenant_id")
+  tenantId  Int      @default(0) @map("tenant_id")
   blogId    Int      @map("blog_id")
   name      String
   email     String

@@ -23,6 +23,8 @@ export interface AuthPrincipal {
   email: string;
   /** For admin principals: their tier. Absent for instructors/students. */
   adminRole?: 'admin' | 'super_admin';
+  /** The tenant this principal belongs to. Null/absent for the platform superadmin. */
+  tenantId?: number | null;
 }
 
 /** Injects the authenticated principal resolved by the JWT strategy. */

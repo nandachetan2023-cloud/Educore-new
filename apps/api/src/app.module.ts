@@ -2,10 +2,17 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { ClsModule } from 'nestjs-cls';
 import configuration from './config/configuration';
 import { PrismaModule } from './prisma/prisma.module';
 import { JwtAuthGuard, RolesGuard, SuperAdminGuard } from './common/guards';
+import { TenantActiveGuard } from './common/tenant-active.guard';
 import { Reflector } from '@nestjs/core';
+import { AuthPrincipal } from './common/decorators';
+import { DEV_TENANT_HEADER, PRINCIPAL_CLS_KEY, TENANT_CLS_KEY } from './common/tenant-context';
+import { CommonModule } from './common/common.module';
+import { TenantsModule } from './tenants/tenants.module';
+import { PlansModule } from './plans/plans.module';
 import { AuthModule } from './auth/auth.module';
 import { CoursesModule } from './courses/courses.module';
 import { CategoriesModule } from './categories/categories.module';
@@ -36,8 +43,30 @@ import { PagesModule } from './pages/pages.module';
       envFilePath: ['../../.env', '.env'],
     }),
     ThrottlerModule.forRoot([{ ttl: 60000, limit: 120 }]),
+    ClsModule.forRoot({
+      global: true,
+      interceptor: {
+        mount: true,
+        setup: (cls, context) => {
+          const req = context.switchToHttp().getRequest();
+          const user = req.user as AuthPrincipal | undefined;
+          // Priority: authenticated principal's own tenant > a host-resolved
+          // tenant set by tenant-resolution middleware (Phase 4) > a dev-only
+          // header for local testing before Host-based resolution exists.
+          const devHeaderRaw = req.headers?.[DEV_TENANT_HEADER];
+          const devHeaderId = Number(devHeaderRaw);
+          const devTenantId = devHeaderRaw && Number.isFinite(devHeaderId) ? devHeaderId : null;
+          const tenantId = user?.tenantId ?? req.tenantHost?.id ?? devTenantId ?? null;
+          cls.set(TENANT_CLS_KEY, tenantId);
+          cls.set(PRINCIPAL_CLS_KEY, user ?? null);
+        },
+      },
+    }),
     PrismaModule,
+    CommonModule,
     AuthModule,
+    TenantsModule,
+    PlansModule,
     CoursesModule,
     CategoriesModule,
     TaxonomyModule,
@@ -65,6 +94,7 @@ import { PagesModule } from './pages/pages.module';
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
     { provide: APP_GUARD, useClass: SuperAdminGuard },
+    { provide: APP_GUARD, useClass: TenantActiveGuard },
   ],
 })
 export class AppModule {}

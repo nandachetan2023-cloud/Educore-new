@@ -53,7 +53,39 @@ export interface Me {
   principal: 'admin' | 'instructor' | 'student';
   /** For admins: their tier. Only 'super_admin' can rebrand & manage admins. */
   adminRole?: 'admin' | 'super_admin';
+  /** The tenant this principal belongs to. Null/absent for the platform superadmin. */
+  tenantId?: number | null;
   wallet?: number;
+}
+
+export interface PlanRow {
+  id: number;
+  name: string;
+  slug: string;
+  priceMonthly: number; // minor units (cents)
+  currency: string;
+  isActive: boolean;
+  stripeProductId?: string | null;
+  stripePriceId?: string | null;
+}
+
+export type TenantStatus = 'pending_setup' | 'active' | 'past_due' | 'suspended';
+
+export interface TenantRow {
+  id: number;
+  name: string;
+  slug: string;
+  status: TenantStatus;
+  manuallySuspended: boolean;
+  customDomain?: string | null;
+  domainStatus: 'none' | 'pending' | 'verified' | 'failed';
+  createdAt: string;
+  owner: { id: number; name: string; email: string };
+  subscription: {
+    id: number;
+    status: string;
+    plan: PlanRow;
+  } | null;
 }
 
 export interface Hero {
