@@ -1,9 +1,10 @@
-import { Body, Controller, Get, Injectable, Module, Put } from '@nestjs/common';
+import { Body, Controller, Get, Inject, Injectable, Module, Put, Query } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { IsHexColor, IsOptional, IsString } from 'class-validator';
 import { ApiTags } from '@nestjs/swagger';
-import { PrismaService } from '../prisma/prisma.service';
-import { Public, Roles, SuperAdmin } from '../common/decorators';
+import { PrismaClient } from '@prisma/client';
+import { RAW_PRISMA } from '../prisma/prisma.module';
+import { CurrentUser, Public, Roles } from '../common/decorators';
 import { Principal } from '../common/enums';
 
 export interface Branding {
@@ -29,22 +30,52 @@ class BrandingDto {
 const SETTING_PREFIX = 'brand.';
 
 /**
- * Runtime white-label branding. Env values are the install defaults; the
- * super-admin overrides any of them from the panel, stored in the `settings`
- * table. `GET /branding` returns the merged result — the frontend themes the
- * entire app (name, logo, favicon, colors, currency) from this one response.
+ * Runtime white-label branding, per tenant. Each tenant Admin overrides
+ * their own branding from their dashboard, stored in the `settings` table
+ * keyed by `tenantId` (`null` = platform-level fallback, editable by the
+ * Superadmin). `GET /branding` returns the merged result — the frontend
+ * themes the entire app (name, logo, favicon, colors, currency) from this
+ * one response.
+ *
+ * This service deliberately queries `Setting` through RAW_PRISMA with an
+ * always-explicit `tenantId`, rather than the CLS-scoped PrismaService: the
+ * scoped client runs UNSCOPED (every tenant's rows) whenever no tenant is
+ * resolved for the current request, which is exactly the situation `GET
+ * /branding` hits from an unauthenticated visitor on the bare platform
+ * domain — that must resolve to the platform defaults (`tenantId: null`),
+ * never an arbitrary tenant's branding.
  */
 @Injectable()
 export class BrandingService {
   constructor(
     private config: ConfigService,
-    private prisma: PrismaService,
+    @Inject(RAW_PRISMA) private raw: PrismaClient,
   ) {}
 
-  async get(): Promise<Branding> {
+  /**
+   * `devTenantId` (local testing without real DNS) wins if present; else a
+   * verified custom domain's host; else the platform (`null`). Note this
+   * intentionally does NOT fall back to the ambient CLS tenant — callers
+   * that already know their tenant (an authenticated admin editing their own
+   * branding) pass it in directly instead.
+   */
+  private async resolveTenantId(host?: string, devTenantId?: number): Promise<number | null> {
+    if (devTenantId != null) return devTenantId;
+    if (host) {
+      const tenant = await this.raw.tenant.findFirst({
+        where: { customDomain: host.toLowerCase(), domainStatus: 'verified' },
+        select: { id: true },
+      });
+      if (tenant) return tenant.id;
+    }
+    return null;
+  }
+
+  /** Public so an authenticated caller (the admin/branding edit page) can fetch its own current tenant's branding directly, without going through host/dev-tenant guesswork. */
+  async getForTenant(tenantId: number | null): Promise<Branding> {
     const defaults = this.config.get<Branding>('brand')!;
-    const rows = await this.prisma.setting.findMany({
-      where: { key: { startsWith: SETTING_PREFIX } },
+    const rows = await this.raw.setting.findMany({
+      where: { tenantId, key: { startsWith: SETTING_PREFIX } },
     });
 
     const overrides: Record<string, string> = {};
@@ -71,26 +102,30 @@ export class BrandingService {
     };
   }
 
-  async update(dto: BrandingDto): Promise<Branding> {
+  get(host?: string, devTenantId?: number): Promise<Branding> {
+    return this.resolveTenantId(host, devTenantId).then((tenantId) => this.getForTenant(tenantId));
+  }
+
+  async update(tenantId: number | null, dto: BrandingDto): Promise<Branding> {
     const entries = Object.entries(dto).filter(([, v]) => v !== undefined && v !== '');
     for (const [key, value] of entries) {
       const settingKey = `${SETTING_PREFIX}${key}`;
-      const existing = await this.prisma.setting.findFirst({ where: { key: settingKey } });
+      const existing = await this.raw.setting.findFirst({ where: { tenantId, key: settingKey } });
       if (existing) {
-        await this.prisma.setting.update({ where: { id: existing.id }, data: { value: String(value) } });
+        await this.raw.setting.update({ where: { id: existing.id }, data: { value: String(value) } });
       } else {
-        await this.prisma.setting.create({ data: { key: settingKey, value: String(value) } });
+        await this.raw.setting.create({ data: { tenantId, key: settingKey, value: String(value) } });
       }
     }
-    return this.get();
+    return this.getForTenant(tenantId);
   }
 
   /** Restores a single field (or all) to the env default by removing overrides. */
-  async reset(field?: string): Promise<Branding> {
-    await this.prisma.setting.deleteMany({
-      where: field ? { key: `${SETTING_PREFIX}${field}` } : { key: { startsWith: SETTING_PREFIX } },
+  async reset(tenantId: number | null, field?: string): Promise<Branding> {
+    await this.raw.setting.deleteMany({
+      where: field ? { tenantId, key: `${SETTING_PREFIX}${field}` } : { tenantId, key: { startsWith: SETTING_PREFIX } },
     });
-    return this.get();
+    return this.getForTenant(tenantId);
   }
 }
 
@@ -101,22 +136,30 @@ export class BrandingController {
 
   @Public()
   @Get('branding')
-  get() {
-    return this.branding.get();
+  get(@Query('host') host?: string, @Query('devTenant') devTenant?: string) {
+    const devTenantId = devTenant ? Number(devTenant) : undefined;
+    return this.branding.get(host, Number.isFinite(devTenantId as number) ? devTenantId : undefined);
+  }
+
+  // Self-service: any tenant Admin views/edits their own branding
+  // (auto-scoped by the tenantId their JWT carries); the platform Superadmin
+  // (tenantId null) views/edits the platform-level fallback the same way.
+  @Roles(Principal.ADMIN)
+  @Get('admin/branding')
+  getMine(@CurrentUser('tenantId') tenantId: number | null) {
+    return this.branding.getForTenant(tenantId ?? null);
   }
 
   @Roles(Principal.ADMIN)
-  @SuperAdmin()
   @Put('admin/branding')
-  update(@Body() dto: BrandingDto) {
-    return this.branding.update(dto);
+  update(@CurrentUser('tenantId') tenantId: number | null, @Body() dto: BrandingDto) {
+    return this.branding.update(tenantId ?? null, dto);
   }
 
   @Roles(Principal.ADMIN)
-  @SuperAdmin()
   @Put('admin/branding/reset')
-  reset() {
-    return this.branding.reset();
+  reset(@CurrentUser('tenantId') tenantId: number | null) {
+    return this.branding.reset(tenantId ?? null);
   }
 }
 

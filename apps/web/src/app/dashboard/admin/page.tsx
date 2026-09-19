@@ -75,10 +75,10 @@ export default function AdminConsole() {
           {user?.adminRole === 'super_admin' && (
             <>
               <Link href="/dashboard/admin/admins" className="btn-ghost">Admins</Link>
-              <Link href="/dashboard/admin/branding" className="btn-ghost">Branding</Link>
               <Link href="/dashboard/admin/settings" className="btn-ghost">Settings</Link>
             </>
           )}
+          <Link href="/dashboard/admin/branding" className="btn-ghost">Branding</Link>
           <Link href="/dashboard/admin/billing" className="btn-ghost">Billing</Link>
           <Link href="/dashboard/admin/domain" className="btn-ghost">Domain</Link>
           <Link href="/dashboard/admin/content" className="btn-ghost">Site content →</Link>

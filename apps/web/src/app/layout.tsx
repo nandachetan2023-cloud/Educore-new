@@ -1,10 +1,13 @@
 import './globals.css';
 import type { Metadata } from 'next';
 import { Poppins } from 'next/font/google';
+import { cookies, headers } from 'next/headers';
 import { Providers } from '@/lib/providers';
 import { Navbar } from '@/components/navbar';
 import { Footer } from '@/components/footer';
 import type { Branding } from '@/lib/types';
+
+const DEV_TENANT_COOKIE = 'educore.devTenant';
 
 const poppins = Poppins({
   subsets: ['latin'],
@@ -23,10 +26,25 @@ const DEFAULT_BRANDING: Branding = {
   commissionRate: 20,
 };
 
+/**
+ * Resolves branding for whichever tenant this request's host belongs to —
+ * folded into the fetch URL itself (not just a header) because Next's fetch
+ * Data Cache keys on the URL, not headers. A plain `${base}/branding` here
+ * would let one tenant's cached response leak to another tenant's visitors
+ * for the 60s revalidate window. This intentionally makes the root layout
+ * dynamic (per-request), which is required for real per-host branding
+ * rather than a build-time-static default.
+ */
 async function getBranding(): Promise<Branding> {
   try {
     const base = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api';
-    const res = await fetch(`${base}/branding`, { next: { revalidate: 60 } });
+    const devTenant = cookies().get(DEV_TENANT_COOKIE)?.value;
+    const host = headers().get('host')?.split(':')[0];
+    const params = new URLSearchParams();
+    if (devTenant) params.set('devTenant', devTenant);
+    else if (host) params.set('host', host);
+    const qs = params.toString();
+    const res = await fetch(`${base}/branding${qs ? `?${qs}` : ''}`, { next: { revalidate: 60 } });
     if (!res.ok) return DEFAULT_BRANDING;
     const data = await res.json();
     return {

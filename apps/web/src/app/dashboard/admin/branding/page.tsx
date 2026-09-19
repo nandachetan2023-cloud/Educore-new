@@ -22,9 +22,10 @@ export default function BrandingPage() {
   useEffect(() => {
     if (authLoading) return;
     if (!user || user.principal !== 'admin') { router.push('/login?next=/dashboard/admin/branding'); return; }
-    // Branding is super-admin only; regular admins get bounced to the console.
-    if (user.adminRole !== 'super_admin') { router.push('/dashboard/admin'); return; }
-    api<Branding>('/branding', { auth: false }).then((b) => setForm(b)).catch(() => {}).finally(() => setLoading(false));
+    // Self-service: fetches THIS admin's own tenant branding by JWT identity
+    // (not by host), so it's correct regardless of which domain they're
+    // browsing the dashboard from.
+    api<Branding>('/admin/branding').then((b) => setForm(b)).catch(() => {}).finally(() => setLoading(false));
   }, [user, authLoading]);
 
   const save = async () => {
