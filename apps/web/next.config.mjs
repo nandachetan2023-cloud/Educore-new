@@ -1,7 +1,7 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   // Keep the active development build separate from an existing stale cache.
-  distDir: '.next-runtime',
+  distDir: '.next-runtime-dev',
   reactStrictMode: true,
   images: {
     remotePatterns: [{ protocol: 'https', hostname: '**' }],

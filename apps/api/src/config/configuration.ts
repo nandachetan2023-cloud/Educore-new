@@ -38,6 +38,12 @@ export default () => ({
   stripe: {
     secretKey: process.env.STRIPE_SECRET_KEY ?? '',
     webhookSecret: process.env.STRIPE_WEBHOOK_SECRET ?? '',
+    // Platform billing (Superadmin selling tenant subscriptions) is kept
+    // logically separate from course-purchase checkout above — same Stripe
+    // account by default, but its own webhook signing secret so the two
+    // webhook endpoints can't be confused, and can point at a different
+    // Stripe account later if needed.
+    platformWebhookSecret: process.env.STRIPE_PLATFORM_WEBHOOK_SECRET ?? '',
   },
   paypal: {
     clientId: process.env.PAYPAL_CLIENT_ID ?? '',

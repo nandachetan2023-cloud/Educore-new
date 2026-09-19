@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { api, ApiError } from '@/lib/api';
 import { useAuth } from '@/lib/providers';
-import { StatusBadge } from '../../page';
+import { TenantStatusBadge } from '@/components/tenant-status-badge';
 import type { TenantRow } from '@/lib/types';
 
 export default function TenantDetailPage() {
@@ -50,7 +50,7 @@ export default function TenantDetailPage() {
 
       <div className="mt-3 flex items-center justify-between">
         <h1 className="text-3xl font-extrabold">{tenant.name}</h1>
-        <StatusBadge status={tenant.status} />
+        <TenantStatusBadge status={tenant.status} />
       </div>
       <p className="mt-1 text-muted">/{tenant.slug}</p>
 

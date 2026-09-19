@@ -60,8 +60,9 @@ export default function PlansPage() {
       <Link href="/dashboard/superadmin" className="text-sm text-muted hover:text-brand">← Superadmin</Link>
       <h1 className="mt-3 text-3xl font-extrabold">Plans</h1>
       <p className="mt-1 text-muted">
-        What you sell tenants. Stripe Product/Price sync isn't wired up yet — plans work today for manual tenant
-        assignment; real recurring billing lands in a later phase.
+        What you sell tenants. A Stripe Product/Price is created (or updated) automatically when
+        <code className="mx-1 rounded bg-line px-1.5 py-0.5 text-xs">STRIPE_SECRET_KEY</code>
+        is configured; without it, plans still work for manual tenant assignment.
       </p>
 
       {err && <p className="mt-4 rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-500">{err}</p>}

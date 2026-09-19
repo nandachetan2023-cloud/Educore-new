@@ -84,6 +84,9 @@ export interface TenantRow {
   subscription: {
     id: number;
     status: string;
+    stripeCustomerId?: string | null;
+    currentPeriodEnd?: string | null;
+    cancelAtPeriodEnd: boolean;
     plan: PlanRow;
   } | null;
 }

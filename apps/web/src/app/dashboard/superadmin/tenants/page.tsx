@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { api, ApiError } from '@/lib/api';
 import { useAuth } from '@/lib/providers';
-import { StatusBadge } from '../page';
+import { TenantStatusBadge } from '@/components/tenant-status-badge';
 import type { PlanRow, TenantRow } from '@/lib/types';
 
 export default function TenantsPage() {
@@ -74,7 +74,7 @@ export default function TenantsPage() {
               <div className="font-semibold">{t.name}</div>
               <div className="text-sm text-muted">{t.owner.email} · {t.subscription?.plan.name ?? 'no plan'}</div>
             </div>
-            <StatusBadge status={t.status} />
+            <TenantStatusBadge status={t.status} />
           </Link>
         ))}
       </div>

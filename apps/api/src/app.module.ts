@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
@@ -7,6 +7,7 @@ import configuration from './config/configuration';
 import { PrismaModule } from './prisma/prisma.module';
 import { JwtAuthGuard, RolesGuard, SuperAdminGuard } from './common/guards';
 import { TenantActiveGuard } from './common/tenant-active.guard';
+import { TenantResolutionMiddleware } from './common/tenant-resolution.middleware';
 import { Reflector } from '@nestjs/core';
 import { AuthPrincipal } from './common/decorators';
 import { DEV_TENANT_HEADER, PRINCIPAL_CLS_KEY, TENANT_CLS_KEY } from './common/tenant-context';
@@ -34,6 +35,8 @@ import { BrandingModule } from './branding/branding.module';
 import { AdminsModule } from './admins/admins.module';
 import { HealthModule } from './health/health.module';
 import { PagesModule } from './pages/pages.module';
+import { BillingModule } from './billing/billing.module';
+import { DomainsModule } from './domains/domains.module';
 
 @Module({
   imports: [
@@ -87,6 +90,8 @@ import { PagesModule } from './pages/pages.module';
     AdminsModule,
     HealthModule,
     PagesModule,
+    BillingModule,
+    DomainsModule,
   ],
   providers: [
     // Order matters: authenticate, then rate-limit, then authorize by role.
@@ -97,4 +102,10 @@ import { PagesModule } from './pages/pages.module';
     { provide: APP_GUARD, useClass: TenantActiveGuard },
   ],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    // Must run before guards so req.tenantHost is set by the time the CLS
+    // interceptor and TenantActiveGuard read it.
+    consumer.apply(TenantResolutionMiddleware).forRoutes('*');
+  }
+}
