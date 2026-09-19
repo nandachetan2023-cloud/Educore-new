@@ -36,13 +36,13 @@ export default function SuperadminOverview() {
   const growth = tenants.slice(0, 8).reverse().map((t, i) => ({ label: t.name, value: i + 1 }));
 
   return <div className="min-h-[calc(100vh-68px)] bg-[#f7f9fb] text-slate-900">
-    <div>
-      <aside className="hidden bg-slate-950 px-3 py-7 text-slate-300 lg:fixed lg:inset-y-[68px] lg:left-0 lg:block lg:w-[220px] lg:overflow-y-auto">
+    <div className="lg:grid lg:grid-cols-[220px_1fr]">
+      <aside className="hidden bg-slate-950 px-3 py-7 text-slate-300 lg:sticky lg:top-[68px] lg:block lg:h-[calc(100vh-68px)] lg:overflow-y-auto">
         <div className="px-3 pb-8"><p className="text-lg font-black text-white">Partner Portal</p><p className="mt-1 text-[10px] font-bold uppercase tracking-[.18em] text-slate-500">Global admin</p></div>
         <nav className="space-y-1"><SideLink active href="/dashboard/superadmin" icon={<LayoutDashboard size={18} />} label="Dashboard" /><SideLink href="/dashboard/superadmin/tenants" icon={<Building2 size={18} />} label="Sub-accounts" /><SideLink href="/dashboard/superadmin/plans" icon={<CreditCard size={18} />} label="Plans" /><SideLink href="/dashboard/admin/branding" icon={<Palette size={18} />} label="Branding" /><SideLink href="/dashboard/admin/admins" icon={<Users size={18} />} label="Account" /></nav>
         <div className="mt-12 border-t border-white/10 px-3 pt-5 text-xs text-slate-500">Signed in as<br /><span className="font-medium text-slate-200">{user?.name ?? 'Admin user'}</span></div>
       </aside>
-      <main className="min-w-0 px-4 py-7 sm:px-7 lg:ml-[220px] lg:px-10">
+      <main className="min-w-0 px-4 py-7 sm:px-7 lg:px-10">
         <div className="mx-auto max-w-[1220px]">
         <header className="mb-8 flex flex-wrap items-center justify-between gap-4"><div><p className="text-sm font-medium text-blue-700">Platform operations</p><h1 className="mt-1 text-3xl font-extrabold tracking-tight">Partner Dashboard</h1></div><div className="flex gap-2"><Link href="/dashboard/superadmin/tenants" className="btn-primary inline-flex items-center gap-2"><Plus size={17} /> Create sub-account</Link><Link href="/dashboard/admin/branding" className="btn-ghost"><Settings size={17} /></Link></div></header>
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4"><Kpi icon={<CreditCard size={19} />} label="Monthly recurring revenue" value={money.format(stats.mrr / 100)} detail="Across active subscriptions" tone="blue" /><Kpi icon={<Building2 size={19} />} label="Active sub-accounts" value={String(stats.active)} detail={`${tenants.length} total workspaces`} tone="slate" /><Kpi icon={<Users size={19} />} label="Pending setup" value={String(stats.pending)} detail="Awaiting account activation" tone="violet" /><Kpi icon={<AlertCircle size={19} />} label="Needs attention" value={String(stats.attention)} detail="Past due or suspended" tone="red" /></section>
