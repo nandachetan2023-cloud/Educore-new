@@ -75,8 +75,8 @@ export default function AdminConsole() {
 
   return (
     <div className="min-h-[calc(100vh-68px)] bg-[#f7f9fb] text-slate-900">
-      <div className="mx-auto grid max-w-[1440px] lg:grid-cols-[220px_1fr]">
-        <aside className="hidden min-h-[calc(100vh-68px)] bg-slate-950 px-3 py-7 text-slate-300 lg:block">
+      <div>
+        <aside className="hidden bg-slate-950 px-3 py-7 text-slate-300 lg:fixed lg:inset-y-[68px] lg:left-0 lg:block lg:w-[220px] lg:overflow-y-auto">
           <div className="px-3 pb-8">
             <p className="truncate text-lg font-black text-white">{branding?.name || 'Admin console'}</p>
             <p className="mt-1 text-[10px] font-bold uppercase tracking-[.18em] text-slate-500">Tenant admin</p>
@@ -105,7 +105,8 @@ export default function AdminConsole() {
           </div>
         </aside>
 
-        <main className="min-w-0 px-4 py-7 sm:px-7 lg:px-10">
+        <main className="min-w-0 flex-1 px-4 py-7 sm:px-7 lg:ml-[220px] lg:px-10">
+          <div className="mx-auto max-w-[1220px]">
           {/* Mobile nav (sidebar is desktop-only) */}
           <div className="mb-6 flex flex-wrap gap-2 lg:hidden">
             {TABS.map((t) => (
@@ -248,6 +249,7 @@ export default function AdminConsole() {
               )}
             </section>
           )}
+          </div>
         </main>
       </div>
     </div>
