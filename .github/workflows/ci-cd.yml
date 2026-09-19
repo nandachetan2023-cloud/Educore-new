@@ -1,0 +1,349 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'apps/api/**'
+      - 'apps/web/**'
+      - 'packages/**'
+      - '.github/workflows/**'
+      - '.dockerignore'
+      - 'Dockerfile'
+      - 'docker-compose*.yml'
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch:
+
+env:
+  NODE_VERSION: '20'
+  DOCKER_REGISTRY: ghcr.io
+
+jobs:
+  # Lint and TypeScript Check
+  lint:
+    name: Lint and Type Check
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        package:
+          - api
+          - web
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: |
+          npm ci
+          npm run build --workspace=@educore/${{ matrix.package }}
+
+      - name: Run linter
+        run: |
+          npm run lint --workspace=@educore/${{ matrix.package }}
+
+      - name: Run TypeScript type check
+        run: |
+          npm run typecheck --workspace=@educore/${{ matrix.package }}
+
+  # Unit Tests
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        package:
+          - api
+    
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client and run migrations
+        run: |
+          npm run db:generate
+          npm run db:migrate
+
+      - name: Run database migrations
+        if: matrix.package == 'api'
+        run: |
+          cd apps/api
+          npx prisma migrate deploy
+
+      - name: Run unit tests
+        if: matrix.package == 'api'
+        run: |
+          cd apps/api
+          npm run test
+
+      - name: Upload coverage reports
+        if: matrix.package == 'api'
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./coverage/lcov.info
+          flags: unittests
+          fail_ci_if_error: false
+
+  # E2E Tests
+  e2e-tests:
+    name: E2E Tests
+    runs-on: ubuntu-latest
+    
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_DB: educore_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Setup database environment
+        run: |
+          mkdir -p apps/api/seeds
+          cat > apps/api/.env.test <<EOF
+            DATABASE_URL="postgresql://postgres:postgres@localhost:5432/educore_test?schema=public"
+            NODE_ENV=test
+            JWT_ACCESS_SECRET=test-access-secret
+            JWT_REFRESH_SECRET=test-refresh-secret
+            STRIPE_SECRET_KEY=sk_test_mock
+          EOF
+
+      - name: Generate Prisma client and run migrations
+        run: |
+          npm run db:generate
+          npx prisma db push --schema apps/api/prisma/schema.prisma
+
+      - name: Seed test data
+        run: |
+          npm run db:seed
+
+      - name: Run E2E tests
+        run: |
+          cd apps/api
+          npm run test:e2e
+
+      - name: Upload E2E coverage
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./apps/api/coverage/e2e.json
+          flags: e2etests
+          fail_ci_if_error: false
+
+  # Security Scan
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Run npm audit
+        run: npm audit --audit-level=moderate
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+
+      - name: Upload Trivy results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+  # Build Docker Images
+  build:
+    name: Build Docker Images
+    runs-on: ubuntu-latest
+    needs: [lint, unit-tests, e2e-tests, security]
+    
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_HUB_USERNAME }}
+          password: ${{ secrets.DOCKER_HUB_PASSWORD }}
+      
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Extract metadata for API
+        id: meta-api
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.DOCKER_REGISTRY }}/${{ github.repository }}-api
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+      
+      - name: Extract metadata for Web
+        id: meta-web
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.DOCKER_REGISTRY }}/${{ github.repository }}-web
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+      
+      - name: Build and push API image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./apps/api/Dockerfile
+          push: true
+          tags: ${{ steps.meta-api.outputs.tags }}
+          labels: ${{ steps.meta-api.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      
+      - name: Build and push Web image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./apps/web/Dockerfile
+          push: true
+          tags: ${{ steps.meta-web.outputs.tags }}
+          labels: ${{ steps.meta-web.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # Deploy to Staging
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: [build]
+    environment:
+      name: staging
+      url: https://staging.educore.com
+    
+    steps:
+      - name: Deploy using SSH
+        run: |
+          |
+          # SSH connection and deployment commands
+          ssh -o StrictHostKeyChecking=no ${{ secrets.STAGING_SSH_USER }}@${{ secrets.STAGING_HOST }} << 'EOF'
+            cd /apps/educore
+            docker-compose pull
+            docker-compose up -d
+            docker-compose exec -T api npm run migration:run
+            echo "Deployment completed"
+          EOF
+
+  # Health Check
+  health-check:
+    name: Health Check
+    runs-on: ubuntu-latest
+    needs: [deploy-staging]
+    
+    steps:
+      - name: Wait for API to be ready
+        run: |
+          for i in {1..60}; do
+            if curl -f http://staging.educore.com:4000/api/health; then
+              echo "API is healthy"
+              exit 0
+            fi
+            echo "Health check failed, retrying..."
+            sleep 5
+          done
+          echo "API health check failed"
+          exit 1
+
+      - name: Wait for Web to be ready
+        run: |
+          for i in {1..30}; do
+            if curl -f http://staging.educore.com:3000; then
+              echo "Web app is ready"
+              exit 0
+            fi
+            echo "Health check failed, retrying..."
+            sleep 5
+          done
+          echo "Web app health check failed"
+          exit 1
+
+  # Notify on Success
+  notify-success:
+    name: Notify - Success
+    runs-on: ubuntu-latest
+    needs: [health-check]
+    if: always()
+    
+    steps:
+      - name: Success Notification
+        if: success()
+        run: |
+          echo "✅ Pipeline completed successfully!"
+          # Send notification to Slack, Email, etc.
+
+  # Notify on Failure
+  notify-failure:
+    name: Notify - Failure
+    runs-on: ubuntu-latest
+    needs: [health-check]
+    if: failure()
+    
+    steps:
+      - name: Failure Notification
+        if: failure()
+        run: |
+          echo "❌ Pipeline failed!"
+          # Send notification to Slack, Email, etc.

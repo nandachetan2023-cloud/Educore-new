@@ -1,0 +1,25 @@
+{
+  "name": "educore-node",
+  "version": "0.1.0",
+  "private": true,
+  "description": "White-label LMS / online course marketplace (Node.js port of the EduCore Laravel platform)",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:api": "npm run start:dev --workspace=@educore/api",
+    "dev:web": "npm run dev --workspace=@educore/web",
+    "build": "npm run build --workspace=@educore/api && npm run build --workspace=@educore/web",
+    "db:generate": "npm run prisma:generate --workspace=@educore/api",
+    "db:migrate": "npm run prisma:migrate --workspace=@educore/api",
+    "db:seed": "npm run prisma:seed --workspace=@educore/api",
+    "db:studio": "npm run prisma:studio --workspace=@educore/api"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "passport": "^0.7.0"
+  }
+}

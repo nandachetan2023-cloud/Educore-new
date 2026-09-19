@@ -1,0 +1,939 @@
+// EduCore LMS — Prisma schema
+// Ported from the original Laravel migrations (45 tables).
+// Datasource is PostgreSQL. The original DB was MySQL; column types have been
+// adjusted (LongText → Text). Enums map to native Postgres enum types.
+//
+// Multi-tenant white-label SaaS: every tenant-owned table carries a
+// denormalized `tenantId` (rather than being derived via joins) so the
+// Prisma tenant-scoping extension (see src/prisma/tenant-scoping.extension.ts)
+// can uniformly inject `where: { tenantId }` without per-model join logic.
+// `Admin`, `Tenant`, `Plan`, and `Subscription` are the platform-level
+// exceptions — they are what the Superadmin manages *across* tenants.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─────────────────────────────────────────────────────────────
+//  Enums
+// ─────────────────────────────────────────────────────────────
+enum UserRole {
+  instructor
+  student
+}
+
+enum AdminRole {
+  admin
+  super_admin
+}
+
+enum ApproveStatus {
+  pending
+  approved
+  rejected
+}
+
+enum Gender {
+  male
+  female
+}
+
+enum LoginAs {
+  student
+  instructor
+}
+
+enum CourseApproval {
+  pending
+  approved
+  rejected
+}
+
+enum CourseStatus {
+  active
+  inactive
+  draft
+}
+
+enum VideoStorage {
+  upload
+  youtube
+  vimeo
+  external_link
+}
+
+enum FileType {
+  video
+  audio
+  doc
+  file
+  pdf
+}
+
+enum LessonType {
+  lesson
+  live
+}
+
+enum OrderStatus {
+  pending
+  approved
+}
+
+enum WithdrawStatus {
+  pending
+  approved
+  rejected
+}
+
+enum TenantStatus {
+  pending_setup
+  active
+  past_due
+  suspended
+}
+
+enum DomainStatus {
+  none
+  pending
+  verified
+  failed
+}
+
+enum SubscriptionStatus {
+  incomplete
+  trialing
+  active
+  past_due
+  canceled
+  unpaid
+}
+
+// ─────────────────────────────────────────────────────────────
+//  Platform: tenants, plans, billing (Superadmin ↔ Admin)
+// ─────────────────────────────────────────────────────────────
+model Tenant {
+  id                      Int          @id @default(autoincrement())
+  name                    String
+  slug                    String       @unique
+  ownerAdminId            Int          @unique @map("owner_admin_id")
+  status                  TenantStatus @default(pending_setup)
+  manuallySuspended       Boolean      @default(false) @map("manually_suspended")
+  customDomain            String?      @unique @map("custom_domain")
+  domainStatus            DomainStatus @default(none) @map("domain_status")
+  domainVerificationToken String?      @map("domain_verification_token")
+  createdAt               DateTime     @default(now()) @map("created_at")
+  updatedAt               DateTime     @updatedAt @map("updated_at")
+
+  owner        Admin         @relation("TenantOwner", fields: [ownerAdminId], references: [id])
+  admins       Admin[]       @relation("TenantMembers")
+  subscription Subscription?
+
+  @@map("tenants")
+}
+
+model Plan {
+  id              Int      @id @default(autoincrement())
+  name            String
+  slug            String   @unique
+  priceMonthly    Int      @map("price_monthly") // minor units (cents)
+  currency        String   @default("usd")
+  stripeProductId String?  @map("stripe_product_id")
+  stripePriceId   String?  @map("stripe_price_id")
+  features        Json?
+  isActive        Boolean  @default(true) @map("is_active")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  subscriptions Subscription[]
+
+  @@map("plans")
+}
+
+model Subscription {
+  id                   Int                @id @default(autoincrement())
+  tenantId             Int                @unique @map("tenant_id")
+  planId               Int                @map("plan_id")
+  stripeCustomerId     String?            @map("stripe_customer_id")
+  stripeSubscriptionId String?            @unique @map("stripe_subscription_id")
+  status               SubscriptionStatus @default(incomplete)
+  currentPeriodEnd     DateTime?          @map("current_period_end")
+  cancelAtPeriodEnd    Boolean            @default(false) @map("cancel_at_period_end")
+  createdAt            DateTime           @default(now()) @map("created_at")
+  updatedAt            DateTime           @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  plan   Plan   @relation(fields: [planId], references: [id])
+
+  @@index([planId])
+  @@map("subscriptions")
+}
+
+// ─────────────────────────────────────────────────────────────
+//  Identity
+// ─────────────────────────────────────────────────────────────
+model Admin {
+  id              Int       @id @default(autoincrement())
+  image           String?
+  name            String
+  email           String    @unique
+  role            AdminRole @default(admin)
+  emailVerifiedAt DateTime? @map("email_verified_at")
+  password        String
+  bio             String?
+  rememberToken   String?   @map("remember_token") @db.VarChar(100)
+  tenantId        Int?      @map("tenant_id")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+
+  tenant     Tenant? @relation("TenantMembers", fields: [tenantId], references: [id])
+  ownsTenant Tenant? @relation("TenantOwner")
+
+  @@index([tenantId])
+  @@map("admins")
+}
+
+model User {
+  id              Int           @id @default(autoincrement())
+  tenantId        Int           @map("tenant_id")
+  role            UserRole
+  image           String        @default("/default-files/avatar.png")
+  name            String
+  headline        String?
+  email           String
+  bio             String?       @db.Text
+  gender          Gender?
+  document        String?
+  emailVerifiedAt DateTime?     @map("email_verified_at")
+  password        String
+  facebook        String?
+  x               String?
+  linkedin        String?
+  website         String?
+  github          String?
+  approveStatus   ApproveStatus @default(pending) @map("approve_status")
+  loginAs         LoginAs?      @map("login_as")
+  wallet          Float         @default(0)
+  rememberToken   String?       @map("remember_token") @db.VarChar(100)
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+
+  courses        Course[]                      @relation("InstructorCourses")
+  carts          Cart[]
+  orders         Order[]                       @relation("BuyerOrders")
+  enrollments    Enrollment[]
+  reviews        Review[]
+  watchHistories WatchHistory[]
+  payoutInfo     InstructorPayoutInformation[]
+  withdraws      Withdraw[]
+
+  @@unique([tenantId, email])
+  @@index([tenantId])
+  @@map("users")
+}
+
+// ─────────────────────────────────────────────────────────────
+//  Course taxonomy
+// ─────────────────────────────────────────────────────────────
+model CourseLanguage {
+  id        Int      @id @default(autoincrement())
+  tenantId  Int      @map("tenant_id")
+  name      String
+  slug      String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  courses Course[]
+
+  @@unique([tenantId, slug])
+  @@index([tenantId])
+  @@map("course_languages")
+}
+
+model CourseLevel {
+  id        Int      @id @default(autoincrement())
+  tenantId  Int      @map("tenant_id")
+  name      String
+  slug      String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  courses Course[]
+
+  @@unique([tenantId, slug])
+  @@index([tenantId])
+  @@map("course_levels")
+}
+
+model CourseCategory {
+  id             Int      @id @default(autoincrement())
+  tenantId       Int      @map("tenant_id")
+  image          String?
+  icon           String?
+  name           String
+  slug           String
+  parentId       Int?     @map("parent_id")
+  showAtTrending Boolean? @default(false) @map("show_at_trending")
+  status         Boolean? @default(true)
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  parent   CourseCategory?  @relation("CategoryTree", fields: [parentId], references: [id])
+  children CourseCategory[] @relation("CategoryTree")
+  courses  Course[]
+
+  @@unique([tenantId, name])
+  @@unique([tenantId, slug])
+  @@index([tenantId])
+  @@map("course_categories")
+}
+
+// ─────────────────────────────────────────────────────────────
+//  Courses & content
+// ─────────────────────────────────────────────────────────────
+model Course {
+  id                 Int            @id @default(autoincrement())
+  tenantId           Int            @map("tenant_id")
+  instructorId       Int            @map("instructor_id")
+  categoryId         Int?           @map("category_id")
+  courseType         String         @default("course") @map("course_type")
+  title              String
+  slug               String
+  seoDescription     String?        @map("seo_description")
+  duration           String?
+  timeZone           String?        @map("time_zone")
+  thumbnail          String?
+  demoVideoStorage   VideoStorage?  @map("demo_video_storage")
+  demoVideoSource    String?        @map("demo_video_source") @db.Text
+  description        String?        @db.Text
+  capacity           Int?
+  price              Float?
+  discount           Float?
+  certificate        Boolean?       @default(false)
+  qna                Boolean?       @default(false)
+  messageForReviewer String?        @map("message_for_reviewer") @db.Text
+  isApproved         CourseApproval @default(pending) @map("is_approved")
+  status             CourseStatus   @default(draft)
+  courseLevelId      Int?           @map("course_level_id")
+  courseLanguageId   Int?           @map("course_language_id")
+  createdAt          DateTime       @default(now()) @map("created_at")
+  updatedAt          DateTime       @updatedAt @map("updated_at")
+
+  instructor  User                   @relation("InstructorCourses", fields: [instructorId], references: [id])
+  category    CourseCategory?        @relation(fields: [categoryId], references: [id])
+  level       CourseLevel?           @relation(fields: [courseLevelId], references: [id])
+  language    CourseLanguage?        @relation(fields: [courseLanguageId], references: [id])
+  chapters    CourseChapter[]
+  lessons     CourseChapterLession[]
+  carts       Cart[]
+  enrollments Enrollment[]
+  reviews     Review[]
+
+  @@index([tenantId])
+  @@index([instructorId])
+  @@index([slug])
+  @@map("courses")
+}
+
+model CourseChapter {
+  id           Int      @id @default(autoincrement())
+  tenantId     Int      @map("tenant_id")
+  title        String
+  instructorId Int      @map("instructor_id")
+  courseId     Int      @map("course_id")
+  order        Int
+  status       Boolean  @default(true)
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  course  Course                 @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  lessons CourseChapterLession[]
+
+  @@index([tenantId])
+  @@index([courseId])
+  @@map("course_chapters")
+}
+
+model CourseChapterLession {
+  id           Int          @id @default(autoincrement())
+  tenantId     Int          @map("tenant_id")
+  title        String
+  slug         String
+  description  String?      @db.Text
+  instructorId Int          @map("instructor_id")
+  courseId     Int          @map("course_id")
+  chapterId    Int          @map("chapter_id")
+  filePath     String       @map("file_path") @db.Text
+  storage      VideoStorage
+  volume       String?
+  duration     String
+  fileType     FileType     @map("file_type")
+  downloadable Boolean      @default(false)
+  order        Int
+  isPreview    Boolean      @default(false) @map("is_preview")
+  status       Boolean      @default(true)
+  lessonType   LessonType   @map("lesson_type")
+  createdAt    DateTime     @default(now()) @map("created_at")
+  updatedAt    DateTime     @updatedAt @map("updated_at")
+
+  course  Course        @relation(fields: [courseId], references: [id])
+  chapter CourseChapter @relation(fields: [chapterId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([courseId])
+  @@index([chapterId])
+  @@map("course_chapter_lessions")
+}
+
+// ─────────────────────────────────────────────────────────────
+//  Commerce
+// ─────────────────────────────────────────────────────────────
+model Cart {
+  id        Int      @id @default(autoincrement())
+  tenantId  Int      @map("tenant_id")
+  userId    Int      @map("user_id")
+  courseId  Int      @map("course_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user   User   @relation(fields: [userId], references: [id])
+  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@map("carts")
+}
+
+model Order {
+  id            Int         @id @default(autoincrement())
+  tenantId      Int         @map("tenant_id")
+  invoiceId     String      @map("invoice_id")
+  buyerId       Int         @map("buyer_id")
+  status        OrderStatus @default(pending)
+  totalAmount   Float       @map("total_amount")
+  paidAmount    Float       @map("paid_amount")
+  currency      String
+  hasCoupon     Boolean     @default(false) @map("has_coupon")
+  couponCode    String?     @map("coupon_code")
+  couponAmount  Float?      @map("coupon_amount")
+  transactionId String      @map("transaction_id")
+  paymentMethod String      @map("payment_method")
+  createdAt     DateTime    @default(now()) @map("created_at")
+  updatedAt     DateTime    @updatedAt @map("updated_at")
+
+  buyer User        @relation("BuyerOrders", fields: [buyerId], references: [id])
+  items OrderItem[]
+
+  @@index([tenantId])
+  @@index([buyerId])
+  @@map("orders")
+}
+
+model OrderItem {
+  id             Int      @id @default(autoincrement())
+  tenantId       Int      @map("tenant_id")
+  orderId        Int      @map("order_id")
+  courseId       Int      @map("course_id")
+  qty            Int      @default(1)
+  price          Float
+  commissionRate Float?   @map("commission_rate")
+  itemType       String   @default("course") @map("item_type")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  order Order @relation(fields: [orderId], references: [id])
+
+  @@index([tenantId])
+  @@index([orderId])
+  @@map("order_items")
+}
+
+model Enrollment {
+  id           Int      @id @default(autoincrement())
+  tenantId     Int      @map("tenant_id")
+  userId       Int      @map("user_id")
+  courseId     Int      @map("course_id")
+  instructorId Int      @map("instructor_id")
+  haveAccess   Boolean  @default(true) @map("have_access")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  user   User   @relation(fields: [userId], references: [id])
+  course Course @relation(fields: [courseId], references: [id])
+
+  @@index([tenantId])
+  @@index([userId])
+  @@index([courseId])
+  @@map("enrollments")
+}
+
+// ─────────────────────────────────────────────────────────────
+//  Payments / payouts
+// ─────────────────────────────────────────────────────────────
+model PaymentSetting {
+  id        Int      @id @default(autoincrement())
+  tenantId  Int      @map("tenant_id")
+  key       String?
+  value     String?  @db.Text
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([tenantId])
+  @@map("payment_settings")
+}
+
+model PayoutGateway {
+  id          Int      @id @default(autoincrement())
+  tenantId    Int      @map("tenant_id")
+  name        String
+  description String   @db.Text
+  status      Boolean  @default(true)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@index([tenantId])
+  @@map("payout_gateways")
+}
+
+model InstructorPayoutInformation {
+  id           Int      @id @default(autoincrement())
+  tenantId     Int      @map("tenant_id")
+  instructorId Int      @map("instructor_id")
+  gateway      String
+  information  String   @db.Text
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  instructor User @relation(fields: [instructorId], references: [id])
+
+  @@index([tenantId])
+  @@map("instructor_payout_information")
+}
+
+model Withdraw {
+  id            Int            @id @default(autoincrement())
+  tenantId      Int            @map("tenant_id")
+  instructorId  Int            @map("instructor_id")
+  amount        Float
+  status        WithdrawStatus @default(pending)
+  transactionId String?        @map("transaction_id")
+  createdAt     DateTime       @default(now()) @map("created_at")
+  updatedAt     DateTime       @updatedAt @map("updated_at")
+
+  instructor User @relation(fields: [instructorId], references: [id])
+
+  @@index([tenantId])
+  @@map("withdraws")
+}
+
+// ─────────────────────────────────────────────────────────────
+//  Learning progress
+// ─────────────────────────────────────────────────────────────
+model WatchHistory {
+  id                  Int      @id @default(autoincrement())
+  tenantId            Int      @map("tenant_id")
+  userId              Int      @map("user_id")
+  courseId            Int      @map("course_id")
+  chapterId           Int      @map("chapter_id")
+  lessonId            Int      @map("lesson_id")
+  isCompleted         Boolean  @default(false) @map("is_completed")
+  lastPositionSeconds Int      @default(0) @map("last_position_seconds")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([userId])
+  @@map("watch_histories")
+}
+
+model Review {
+  id        Int      @id @default(autoincrement())
+  tenantId  Int      @map("tenant_id")
+  userId    Int      @map("user_id")
+  courseId  Int      @map("course_id")
+  review    String   @db.Text
+  rating    Int      @default(0)
+  status    Boolean  @default(false)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user   User   @relation(fields: [userId], references: [id])
+  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@map("reviews")
+}
+
+// ─────────────────────────────────────────────────────────────
+//  Certificates
+// ─────────────────────────────────────────────────────────────
+model CertificateBuilder {
+  id          Int      @id @default(autoincrement())
+  tenantId    Int      @map("tenant_id")
+  background  String?
+  title       String?
+  subTitle    String?  @map("sub_title")
+  description String?
+  signature   String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@index([tenantId])
+  @@map("certificate_builders")
+}
+
+model CertificateBuilderItem {
+  id        Int      @id @default(autoincrement())
+  tenantId  Int      @map("tenant_id")
+  elementId String?  @map("element_id")
+  xPosition String?  @map("x_position")
+  yPosition String?  @map("y_position")
+  text      String?
+  fontSize  Int      @default(16) @map("font_size")
+  color     String   @default("#111827")
+  bold      Boolean  @default(false)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([tenantId])
+  @@map("certificate_builder_items")
+}
+
+// ─────────────────────────────────────────────────────────────
+//  CMS / site builder (key-value + content blocks)
+// ─────────────────────────────────────────────────────────────
+model MailQueueJob {
+  id        Int      @id @default(autoincrement())
+  tenantId  Int      @map("tenant_id")
+  to        String
+  subject   String
+  html      String   @db.Text
+  status    String   @default("pending") // pending | sent | failed
+  attempts  Int      @default(0)
+  lastError String?  @map("last_error")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([status])
+  @@index([tenantId])
+  @@map("mail_queue_jobs")
+}
+
+model Setting {
+  id        Int      @id @default(autoincrement())
+  tenantId  Int?     @map("tenant_id") // null = platform-level fallback setting
+  key       String?
+  value     String?  @db.Text
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([tenantId])
+  @@map("settings")
+}
+
+model Hero {
+  id        Int      @id @default(autoincrement())
+  tenantId  Int      @map("tenant_id")
+  title     String?  @db.Text
+  subTitle  String?  @map("sub_title") @db.Text
+  image     String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([tenantId])
+  @@map("heroes")
+}
+
+model Feature {
+  id          Int      @id @default(autoincrement())
+  tenantId    Int      @map("tenant_id")
+  icon        String?
+  title       String?
+  description String?  @db.Text
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@index([tenantId])
+  @@map("features")
+}
+
+model AboutUsSection {
+  id          Int      @id @default(autoincrement())
+  tenantId    Int      @map("tenant_id")
+  title       String?
+  subTitle    String?  @map("sub_title") @db.Text
+  description String?  @db.Text
+  image       String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@index([tenantId])
+  @@map("about_us_sections")
+}
+
+model LatestCourseSection {
+  id        Int      @id @default(autoincrement())
+  tenantId  Int      @map("tenant_id")
+  title     String?
+  subTitle  String?  @map("sub_title") @db.Text
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([tenantId])
+  @@map("latest_course_sections")
+}
+
+model Newsletter {
+  id        Int      @id @default(autoincrement())
+  tenantId  Int      @map("tenant_id")
+  email     String
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([tenantId])
+  @@map("newsletters")
+}
+
+model BecomeInstructorSection {
+  id          Int      @id @default(autoincrement())
+  tenantId    Int      @map("tenant_id")
+  title       String?
+  subTitle    String?  @map("sub_title") @db.Text
+  description String?  @db.Text
+  image       String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@index([tenantId])
+  @@map("become_instructor_sections")
+}
+
+model VideoSection {
+  id        Int      @id @default(autoincrement())
+  tenantId  Int      @map("tenant_id")
+  title     String?
+  subTitle  String?  @map("sub_title") @db.Text
+  videoUrl  String?  @map("video_url")
+  image     String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([tenantId])
+  @@map("video_sections")
+}
+
+model Brand {
+  id        Int      @id @default(autoincrement())
+  tenantId  Int      @map("tenant_id")
+  image     String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([tenantId])
+  @@map("brands")
+}
+
+model FeaturedInstructor {
+  id           Int      @id @default(autoincrement())
+  tenantId     Int      @map("tenant_id")
+  instructorId Int?     @map("instructor_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@index([tenantId])
+  @@map("featured_instructors")
+}
+
+model Testimonial {
+  id        Int      @id @default(autoincrement())
+  tenantId  Int      @map("tenant_id")
+  name      String?
+  headline  String?
+  image     String?
+  comment   String?  @db.Text
+  rating    Int?     @default(5)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([tenantId])
+  @@map("testimonials")
+}
+
+model Counter {
+  id        Int      @id @default(autoincrement())
+  tenantId  Int      @map("tenant_id")
+  title     String?
+  number    String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([tenantId])
+  @@map("counters")
+}
+
+model Contact {
+  id        Int      @id @default(autoincrement())
+  tenantId  Int      @map("tenant_id")
+  name      String
+  email     String
+  subject   String?
+  message   String   @db.Text
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([tenantId])
+  @@map("contacts")
+}
+
+model ContactSetting {
+  id        Int      @id @default(autoincrement())
+  tenantId  Int      @map("tenant_id")
+  image     String?
+  mapUrl    String?  @map("map_url") @db.Text
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([tenantId])
+  @@map("contact_settings")
+}
+
+model TopBar {
+  id        Int      @id @default(autoincrement())
+  tenantId  Int      @map("tenant_id")
+  email     String?
+  phone     String?
+  text      String?  @db.Text
+  status    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([tenantId])
+  @@map("top_bars")
+}
+
+model Footer {
+  id          Int      @id @default(autoincrement())
+  tenantId    Int      @map("tenant_id")
+  description String?  @db.Text
+  copyright   String?
+  logo        String?
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@index([tenantId])
+  @@map("footers")
+}
+
+model SocialLink {
+  id        Int      @id @default(autoincrement())
+  tenantId  Int      @map("tenant_id")
+  icon      String?
+  url       String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([tenantId])
+  @@map("social_links")
+}
+
+model FooterColumnOne {
+  id        Int      @id @default(autoincrement())
+  tenantId  Int      @map("tenant_id")
+  title     String?
+  url       String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([tenantId])
+  @@map("footer_column_ones")
+}
+
+model FooterColumnTwo {
+  id        Int      @id @default(autoincrement())
+  tenantId  Int      @map("tenant_id")
+  title     String?
+  url       String?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([tenantId])
+  @@map("footer_column_twos")
+}
+
+model CustomPage {
+  id        Int      @id @default(autoincrement())
+  tenantId  Int      @map("tenant_id")
+  title     String
+  slug      String
+  content   String?  @db.Text
+  status    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([tenantId, slug])
+  @@index([tenantId])
+  @@map("custom_pages")
+}
+
+// ─────────────────────────────────────────────────────────────
+//  Blog
+// ─────────────────────────────────────────────────────────────
+model BlogCategory {
+  id        Int      @id @default(autoincrement())
+  tenantId  Int      @map("tenant_id")
+  name      String
+  slug      String
+  status    Boolean
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  blogs Blog[]
+
+  @@index([tenantId])
+  @@map("blog_categories")
+}
+
+model Blog {
+  id               Int      @id @default(autoincrement())
+  tenantId         Int      @map("tenant_id")
+  categoryId       Int?     @map("category_id")
+  title            String
+  slug             String
+  image            String?
+  shortDescription String?  @map("short_description") @db.Text
+  description      String?  @db.Text
+  seoDescription   String?  @map("seo_description") @db.Text
+  status           Boolean  @default(true)
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  category BlogCategory? @relation(fields: [categoryId], references: [id])
+  comments BlogComment[]
+
+  @@unique([tenantId, slug])
+  @@index([tenantId])
+  @@map("blogs")
+}
+
+model BlogComment {
+  id        Int      @id @default(autoincrement())
+  tenantId  Int      @map("tenant_id")
+  blogId    Int      @map("blog_id")
+  name      String
+  email     String
+  comment   String   @db.Text
+  status    Boolean  @default(false)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  blog Blog @relation(fields: [blogId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@map("blog_comments")
+}

@@ -1,0 +1,32 @@
+node_modules/
+dist/
+.next/
+out/
+build/
+
+# env
+.env
+.env.local
+.env.*.local
+
+# logs
+*.log
+npm-debug.log*
+
+# prisma
+prisma/*.db
+
+# uploads (local disk driver)
+apps/api/storage/uploads/*
+!apps/api/storage/uploads/.gitkeep
+
+# local-only scratch (moved-aside dead code, not part of the app)
+apps/api/_dead_code_removed/
+
+# os / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.tsbuildinfo
+coverage/
