@@ -78,9 +78,8 @@ export default function AdminConsole() {
               <Link href="/dashboard/admin/settings" className="btn-ghost">Settings</Link>
             </>
           )}
-          <Link href="/dashboard/admin/branding" className="btn-ghost">Branding</Link>
+          <Link href="/dashboard/admin/white-label" className="btn-ghost">White label</Link>
           <Link href="/dashboard/admin/billing" className="btn-ghost">Billing</Link>
-          <Link href="/dashboard/admin/domain" className="btn-ghost">Domain</Link>
           <Link href="/dashboard/admin/content" className="btn-ghost">Site content →</Link>
         </div>
       </div>

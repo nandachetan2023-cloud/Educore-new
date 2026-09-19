@@ -7,6 +7,8 @@ import {
   Inject,
   Injectable,
   Module,
+  Param,
+  ParseIntPipe,
   Post,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
@@ -15,7 +17,7 @@ import { PrismaClient } from '@prisma/client';
 import { randomBytes } from 'crypto';
 import { resolveTxt } from 'dns/promises';
 import { RAW_PRISMA } from '../prisma/prisma.module';
-import { CurrentUser, Roles } from '../common/decorators';
+import { CurrentUser, Roles, SuperAdmin } from '../common/decorators';
 import { Principal } from '../common/enums';
 
 // Loose hostname check — full DNS validity is out of scope, this just
@@ -28,10 +30,12 @@ class SetDomainDto {
 }
 
 /**
- * Self-service custom domain for a tenant Admin: set a domain, then prove
- * ownership via a DNS TXT record before `tenant-resolution.middleware.ts`
- * will ever route traffic for it (see there for why only `verified` domains
- * are trusted).
+ * Custom domain for a tenant: set a domain, then prove ownership via a DNS
+ * TXT record before `tenant-resolution.middleware.ts` will ever route
+ * traffic for it (see there for why only `verified` domains are trusted).
+ * Reachable two ways: self-service by the tenant's own Admin (`DomainsController`,
+ * `tenantId` from their JWT), or on their behalf by the platform Superadmin
+ * (`SuperAdminDomainsController`, `tenantId` from the URL, any tenant).
  */
 @Injectable()
 export class DomainsService {
@@ -39,7 +43,7 @@ export class DomainsService {
 
   private async getOwnTenant(tenantId: number | null | undefined) {
     if (tenantId == null) {
-      throw new ForbiddenException('The platform superadmin has no tenant of its own');
+      throw new ForbiddenException('No tenant specified');
     }
     const tenant = await this.raw.tenant.findUnique({ where: { id: tenantId } });
     if (!tenant) throw new ForbiddenException('No tenant on this account');
@@ -112,8 +116,32 @@ export class DomainsController {
   }
 }
 
+/** Lets the platform Superadmin configure any tenant's custom domain on their behalf, from the tenant detail page. */
+@ApiTags('domains')
+@Controller('admin/tenants/:tenantId/domain')
+@Roles(Principal.ADMIN)
+@SuperAdmin()
+export class SuperAdminDomainsController {
+  constructor(private domains: DomainsService) {}
+
+  @Get()
+  get(@Param('tenantId', ParseIntPipe) tenantId: number) {
+    return this.domains.get(tenantId);
+  }
+
+  @Post()
+  set(@Param('tenantId', ParseIntPipe) tenantId: number, @Body() dto: SetDomainDto) {
+    return this.domains.setDomain(tenantId, dto.domain);
+  }
+
+  @Post('verify')
+  verify(@Param('tenantId', ParseIntPipe) tenantId: number) {
+    return this.domains.verify(tenantId);
+  }
+}
+
 @Module({
   providers: [DomainsService],
-  controllers: [DomainsController],
+  controllers: [DomainsController, SuperAdminDomainsController],
 })
 export class DomainsModule {}
