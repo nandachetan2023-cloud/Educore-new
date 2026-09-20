@@ -119,24 +119,91 @@ export class DashboardService {
   }
 
   async admin() {
-    const [users, instructors, courses, orders, revenue] = await Promise.all([
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - 30);
+
+    const [
+      users,
+      instructors,
+      courses,
+      orders,
+      revenue,
+      usersPrev,
+      instructorsPrev,
+      coursesPrev,
+      ordersPrev,
+      revenuePrev,
+    ] = await Promise.all([
       this.prisma.user.count({ where: { role: 'student' } }),
       this.prisma.user.count({ where: { role: 'instructor' } }),
       this.prisma.course.count(),
       this.prisma.order.count({ where: { status: 'approved' } }),
+      this.prisma.order.aggregate({ where: { status: 'approved' }, _sum: { paidAmount: true } }),
+      this.prisma.user.count({ where: { role: 'student', createdAt: { lt: cutoff } } }),
+      this.prisma.user.count({ where: { role: 'instructor', createdAt: { lt: cutoff } } }),
+      this.prisma.course.count({ where: { createdAt: { lt: cutoff } } }),
+      this.prisma.order.count({ where: { status: 'approved', createdAt: { lt: cutoff } } }),
       this.prisma.order.aggregate({
-        where: { status: 'approved' },
+        where: { status: 'approved', createdAt: { lt: cutoff } },
         _sum: { paidAmount: true },
       }),
     ]);
+
     return {
       students: users,
       instructors,
       courses,
       orders,
       revenue: revenue._sum.paidAmount ?? 0,
+      // % growth over the last 30 days (current total vs. the total as of 30 days ago).
+      trends: {
+        students: pctChange(users, usersPrev),
+        instructors: pctChange(instructors, instructorsPrev),
+        courses: pctChange(courses, coursesPrev),
+        orders: pctChange(orders, ordersPrev),
+        revenue: pctChange(revenue._sum.paidAmount ?? 0, revenuePrev._sum.paidAmount ?? 0),
+      },
     };
   }
+
+  /** Most recent orders, newest first, with the buyer's name and the first course on the order. */
+  async recentActivity(take = 8) {
+    const orders = await this.prisma.order.findMany({
+      orderBy: { createdAt: 'desc' },
+      take,
+      select: {
+        id: true,
+        paidAmount: true,
+        currency: true,
+        status: true,
+        createdAt: true,
+        buyer: { select: { name: true } },
+        items: { select: { courseId: true }, take: 1 },
+      },
+    });
+
+    const courseIds = [...new Set(orders.map((o) => o.items[0]?.courseId).filter((id): id is number => id != null))];
+    const courses = courseIds.length
+      ? await this.prisma.course.findMany({ where: { id: { in: courseIds } }, select: { id: true, title: true } })
+      : [];
+    const titleById = new Map(courses.map((c) => [c.id, c.title]));
+
+    return orders.map((o) => ({
+      id: o.id,
+      studentName: o.buyer.name,
+      courseTitle: (o.items[0] && titleById.get(o.items[0].courseId)) ?? 'Course',
+      amount: o.paidAmount,
+      currency: o.currency,
+      status: o.status,
+      createdAt: o.createdAt,
+    }));
+  }
+}
+
+/** Percent change from `prev` to `curr`; 0→positive reads as +100%, 0→0 as 0%. */
+function pctChange(curr: number, prev: number): number {
+  if (prev === 0) return curr > 0 ? 100 : 0;
+  return ((curr - prev) / prev) * 100;
 }
 
 @ApiTags('dashboard')
@@ -166,6 +233,12 @@ export class DashboardController {
   @Get('admin/analytics')
   adminAnalytics(@Query('days') days?: string) {
     return this.dashboard.adminAnalytics(days ? parseInt(days, 10) : 30);
+  }
+
+  @Roles(Principal.ADMIN)
+  @Get('admin/activity')
+  adminActivity(@Query('take') take?: string) {
+    return this.dashboard.recentActivity(take ? parseInt(take, 10) : 8);
   }
 
   @Roles(Principal.INSTRUCTOR)
