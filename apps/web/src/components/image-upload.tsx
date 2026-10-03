@@ -37,7 +37,6 @@ export function ImageUpload({ value, onChange, label = 'Image' }: { value?: stri
       <div className="flex items-center gap-4">
         <div className="h-20 w-32 shrink-0 overflow-hidden rounded-lg border border-line bg-brand-soft">
           {value ? (
-            // eslint-disable-next-line @next/next/no-img-element
             <img src={value} alt="" className="h-full w-full object-cover" />
           ) : (
             <div className="grid h-full place-items-center text-xs text-muted">No image</div>

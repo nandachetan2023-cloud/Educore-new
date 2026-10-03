@@ -72,7 +72,6 @@ function initials(name: string): string {
 
 function Avatar({ name, image, size = 'h-9 w-9' }: { name: string; image?: string | null; size?: string }) {
   if (image) {
-    // eslint-disable-next-line @next/next/no-img-element
     return <img src={image} alt="" className={`${size} rounded-full object-cover shadow-sm`} />;
   }
   return (
@@ -170,7 +169,6 @@ export default function UserDirectoryPage() {
       return;
     }
     load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, authLoading]);
 
   const all: DirectoryUser[] = useMemo(

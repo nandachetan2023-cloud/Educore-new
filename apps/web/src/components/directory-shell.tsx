@@ -165,7 +165,6 @@ export function DirectoryShell({
         <div className="flex flex-col gap-3 px-4">
           <div className="flex items-center gap-3 rounded-xl bg-surface px-4 py-3">
             {userImage ? (
-              // eslint-disable-next-line @next/next/no-img-element
               <img src={userImage} alt="" className="h-8 w-8 shrink-0 rounded-full object-cover" />
             ) : (
               <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-brand-soft text-xs font-bold text-brand">
@@ -261,7 +260,6 @@ export function DirectoryShell({
               </button>
               <div className="hidden items-center gap-2.5 sm:flex">
                 {userImage ? (
-                  // eslint-disable-next-line @next/next/no-img-element
                   <img src={userImage} alt="" className="h-8 w-8 rounded-full object-cover" />
                 ) : (
                   <span className="grid h-8 w-8 place-items-center rounded-full bg-brand-soft text-xs font-bold text-brand">

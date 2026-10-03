@@ -285,7 +285,6 @@ export default function CartPage() {
                   return (
                     <div key={item.id} className="flex items-center gap-4 rounded-2xl border border-line bg-card p-4 shadow-sm">
                       <span className="h-16 w-24 shrink-0 overflow-hidden rounded-xl">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
                           src={item.course.thumbnail || `https://picsum.photos/seed/educore-${item.course.id}/320/180`}
                           alt="" loading="lazy" className="h-full w-full object-cover"
@@ -329,7 +328,6 @@ export default function CartPage() {
                 <div className="space-y-4 px-6 py-5">
                   {cart.items.slice(0, 3).map((item) => (                    <div key={item.id} className="flex items-center gap-3">
                       <span className="h-14 w-20 shrink-0 overflow-hidden rounded-lg">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img
                           src={item.course.thumbnail || `https://picsum.photos/seed/educore-${item.course.id}/320/180`}
                           alt="" loading="lazy" className="h-full w-full object-cover"

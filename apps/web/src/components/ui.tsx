@@ -18,7 +18,6 @@ export function BrandMark({ size = 'md' }: { size?: 'sm' | 'md' | 'lg' }) {
   const branding = useBranding();
   const dims = size === 'lg' ? 'h-11 w-11' : size === 'sm' ? 'h-8 w-8' : 'h-9 w-9';
   if (branding?.logo && !branding.logo.endsWith('.svg')) {
-    // eslint-disable-next-line @next/next/no-img-element
     return <img src={branding.logo} alt={branding.name} className="h-8 w-auto max-w-[140px] object-contain" />;
   }
   return (
@@ -62,7 +61,6 @@ export function CourseThumb({
 }: {
   src?: string | null; seed: string | number; alt: string; className?: string;
 }) {
-  // eslint-disable-next-line @next/next/no-img-element
   return <img src={src || thumbFor(seed)} alt={alt} loading="lazy" className={className} />;
 }
 

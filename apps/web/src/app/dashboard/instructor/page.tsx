@@ -224,7 +224,6 @@ export default function InstructorDashboard() {
                       <td className="px-5 py-4">
                         <div className="flex items-center gap-3">
                           <span className="h-12 w-16 shrink-0 overflow-hidden rounded-lg">
-                            {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img src={`https://picsum.photos/seed/educore-${c.id}/320/180`} alt="" loading="lazy" className="h-full w-full object-cover" />
                           </span>
                           <span>

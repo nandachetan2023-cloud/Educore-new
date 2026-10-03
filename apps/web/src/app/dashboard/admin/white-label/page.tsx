@@ -223,7 +223,6 @@ export default function WhiteLabelPage() {
             <div className="p-4">
               <div className="flex items-center gap-2 border-b border-line pb-3">
                 {form.logo ? (
-                  // eslint-disable-next-line @next/next/no-img-element
                   <img src={form.logo} alt="" className="h-6 w-auto max-w-[90px] object-contain" />
                 ) : (
                   <span className="grid h-6 w-6 place-items-center rounded-md text-xs font-bold text-white" style={{ background: form.primaryColor }}>

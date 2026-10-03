@@ -137,7 +137,6 @@ function CatalogInner() {
               <div className="text-[11px] font-bold uppercase tracking-widest text-muted">Expertise</div>
               <div className="mt-1 flex -space-x-2">
                 {[11, 22, 33].map((s) => (
-                  // eslint-disable-next-line @next/next/no-img-element
                   <img key={s} src={`https://picsum.photos/seed/mentor-${s}/48/48`} alt="" className="h-7 w-7 rounded-full border-2 border-card object-cover" />
                 ))}
                 <span className="grid h-7 w-7 place-items-center rounded-full border-2 border-card bg-brand text-[9px] font-bold text-white">+4k</span>
@@ -306,7 +305,6 @@ function CatalogInner() {
                 {visible.map((c) => (
                   <Link key={c.id} href={`/courses/${c.slug}`} className="group flex flex-col gap-4 rounded-2xl border border-line bg-card p-4 shadow-sm transition hover:shadow-lift sm:flex-row">
                     <div className="h-40 w-full shrink-0 overflow-hidden rounded-xl sm:w-56">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
                       <img src={c.thumbnail || `https://picsum.photos/seed/educore-${c.id}/640/360`} alt={c.title} loading="lazy" className="h-full w-full object-cover" />
                     </div>
                     <div className="flex flex-1 flex-col py-1">

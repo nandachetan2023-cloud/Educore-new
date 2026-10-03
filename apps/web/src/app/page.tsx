@@ -117,7 +117,6 @@ export default function HomePage() {
           {/* Hero visual with floating cards */}
           <div className="relative mx-auto w-full max-w-[520px]">
             <div className="overflow-hidden rounded-[28px] shadow-lift">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src={HERO_IMG} alt="Students learning together" className="aspect-[4/4.4] w-full object-cover sm:aspect-[4/3.6]" />
             </div>
             <div className="absolute -left-3 top-8 flex items-center gap-2.5 rounded-2xl border border-line bg-card px-4 py-3 shadow-lift sm:-left-8">
@@ -167,7 +166,6 @@ export default function HomePage() {
                   className="relative overflow-hidden rounded-2xl border border-line bg-surface p-6 shadow-sm"
                 >
                   {offer.banner && (
-                    // eslint-disable-next-line @next/next/no-img-element
                     <img src={offer.banner} alt="" className="absolute inset-0 h-full w-full object-cover opacity-15" />
                   )}
                   <div className="relative">
@@ -218,7 +216,6 @@ export default function HomePage() {
         <div className="container-page flex flex-wrap items-center justify-center gap-x-12 gap-y-4">
           {cms?.brands?.length ? (
             cms.brands.slice(0, 6).map((b) => (
-              // eslint-disable-next-line @next/next/no-img-element
               <img key={b.id} src={b.image} alt="" className="h-6 w-auto object-contain opacity-50 grayscale" />
             ))
           ) : (
@@ -368,7 +365,6 @@ export default function HomePage() {
                 <div key={t.id} className="flex flex-col rounded-2xl border border-line bg-card p-7 shadow-sm">
                   <div className="flex items-center gap-3">
                     {t.image ? (
-                      // eslint-disable-next-line @next/next/no-img-element
                       <img src={t.image} alt={t.name} className="h-11 w-11 rounded-full object-cover" />
                     ) : (
                       <span className="grid h-11 w-11 place-items-center rounded-full bg-brand-soft font-bold text-brand">

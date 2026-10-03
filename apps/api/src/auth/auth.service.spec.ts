@@ -1,32 +1,60 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { AuthService } from './auth.service';
-import { UsersService } from '../users/users.service';
+import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
-import { PrismaService } from '../prisma/prisma.service';
-import { ConflictException, UnauthorizedException } from '@nestjs/common';
+import { AuthService } from './auth.service';
+import { PrismaService, PrismaConnection } from '../prisma/prisma.service';
+import { RAW_PRISMA } from '../prisma/prisma.module';
+import { TenantStatusCache } from '../common/tenant-status-cache.service';
+import {
+  ConflictException,
+  UnauthorizedException,
+} from '@nestjs/common';
+import { TenantSuspendedException } from '../common/tenant-suspended.exception';
+import { Principal } from '../common/enums';
+import * as argon2 from 'argon2';
 
 describe('AuthService', () => {
   let service: AuthService;
-  let usersService: UsersService;
-  let jwtService: JwtService;
-  let prismaService: PrismaService;
+  let prisma: { user: Record<string, jest.Mock>; admin: Record<string, jest.Mock> };
+  let raw: { tenant: Record<string, jest.Mock> };
+  let jwt: { verifyAsync: jest.Mock; signAsync: jest.Mock };
+  let config: { get: jest.Mock };
+  let tenantStatusCache: { getStatus: jest.Mock; invalidate: jest.Mock };
 
   beforeEach(async () => {
+    prisma = {
+      user: { findFirst: jest.fn(), findUnique: jest.fn(), create: jest.fn() },
+      admin: { findUnique: jest.fn() },
+    };
+    raw = { tenant: { findUnique: jest.fn(), findFirst: jest.fn() } };
+    raw.tenant.findUnique.mockResolvedValue({ status: 'active' });
+    jwt = {
+      verifyAsync: jest.fn().mockResolvedValue({ sub: 1, principal: Principal.STUDENT }),
+      signAsync: jest.fn().mockResolvedValueOnce('access-token').mockResolvedValueOnce('refresh-token'),
+    };
+    config = { get: jest.fn((key: string) => `secret:${key}`) };
+    tenantStatusCache = {
+      getStatus: jest.fn((_id: number, loader: () => Promise<string>) => loader()),
+      invalidate: jest.fn(),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
-        AuthService,
-        UsersService,
-        JwtService,
-        PrismaService,
+        { provide: AuthService, useClass: AuthService },
+        { provide: PrismaService, useValue: prisma },
+        { provide: JwtService, useValue: jwt },
+        { provide: ConfigService, useValue: config },
+        { provide: RAW_PRISMA, useValue: raw },
+        { provide: PrismaConnection, useValue: raw },
+        { provide: TenantStatusCache, useValue: tenantStatusCache },
       ],
     }).compile();
 
     service = module.get<AuthService>(AuthService);
-    usersService = module.get<UsersService>(UsersService);
-    jwtService = module.get<JwtService>(JwtService);
-    prismaService = module.get<PrismaService>(PrismaService);
-
     jest.clearAllMocks();
+    jwt.signAsync
+      .mockResolvedValueOnce('access-token')
+      .mockResolvedValueOnce('refresh-token');
   });
 
   it('should be defined', () => {
@@ -34,135 +62,186 @@ describe('AuthService', () => {
   });
 
   describe('register', () => {
-    it('should successfully register a new user', async () => {
-      const registerDto = {
-        name: 'John Doe',
-        email: 'john@example.com',
-        password: 'password123',
-        role: 'student',
-        phone: '+1234567890',
-      };
+    const dto = {
+      name: 'John Doe',
+      email: 'john@example.com',
+      password: 'password123',
+      role: 'student' as const,
+    };
 
-      const existingUser = null;
-      const user = {
+    it('registers a new user and issues tokens', async () => {
+      prisma.user.findFirst.mockResolvedValue(null);
+      prisma.user.create.mockResolvedValue({
         id: 1,
-        name: 'John Doe',
-        email: 'john@example.com',
+        name: dto.name,
+        email: dto.email,
         role: 'student',
-        password: 'hashed-password',
-      };
+        tenantId: 7,
+      });
 
-      jest.spyOn(usersService, 'findByEmail').mockResolvedValue(existingUser);
-      jest.spyOn(usersService, 'create').mockResolvedValue(user);
-      jest.spyOn(jwtService, 'sign').mockReturnValue('token');
+      const result = await service.register(dto);
 
-      const result = await service.register(registerDto);
-
+      expect(prisma.user.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ name: dto.name, email: dto.email, role: 'student' }),
+      });
       expect(result).toEqual({
-        user: { id: 1, name: 'John Doe', email: 'john@example.com', role: 'student' },
-        token: 'token',
+        accessToken: 'access-token',
+        refreshToken: 'refresh-token',
+        principal: 'student',
       });
     });
 
-    it('should throw conflict exception for existing email', async () => {
-      const registerDto = {
-        name: 'John Doe',
-        email: 'existing@example.com',
-        password: 'password123',
-        role: 'student',
-      };
+    it('throws ConflictException when the email is already registered', async () => {
+      prisma.user.findFirst.mockResolvedValue({ id: 1 });
 
-      const existingUser = { id: 1 };
+      await expect(service.register(dto)).rejects.toThrow(ConflictException);
+      expect(prisma.user.create).not.toHaveBeenCalled();
+    });
 
-      jest.spyOn(usersService, 'findByEmail').mockResolvedValue(existingUser);
+    it('marks instructors as pending approval', async () => {
+      prisma.user.findFirst.mockResolvedValue(null);
+      prisma.user.create.mockResolvedValue({
+        id: 2,
+        role: 'instructor',
+        email: dto.email,
+        tenantId: 7,
+      });
 
-      await expect(service.register(registerDto)).rejects.toThrow(ConflictException);
+      await service.register({ ...dto, role: 'instructor' });
+
+      expect(prisma.user.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ approveStatus: 'pending' }),
+      });
     });
   });
 
-  describe('login', () => {
-    it('should successfully login with valid credentials', async () => {
-      const loginDto = {
-        email: 'john@example.com',
-        password: 'password123',
-      };
+  describe('loginFrontend', () => {
+    const dto = { email: 'john@example.com', password: 'password123' };
 
+    it('logs in a user with valid credentials', async () => {
       const user = {
         id: 1,
-        name: 'John Doe',
-        email: 'john@example.com',
+        email: dto.email,
         role: 'student',
-        password: 'hashed-password',
+        tenantId: 7,
+        password: await argon2.hash(dto.password),
       };
+      prisma.user.findFirst.mockResolvedValue(user);
 
-      const resultUser = {
-        ...user,
-        password: undefined,
-      };
-
-      jest.spyOn(usersService, 'findByEmail').mockResolvedValue(user);
-      jest.spyOn(service, 'verifyPassword').mockResolvedValue(true);
-      jest.spyOn(jwtService, 'sign').mockReturnValue('token');
-
-      const result = await service.login(loginDto);
+      const result = await service.loginFrontend(dto);
 
       expect(result).toEqual({
-        user: resultUser,
-        accessToken: 'token',
-        refreshToken: 'token',
+        accessToken: 'access-token',
+        refreshToken: 'refresh-token',
+        principal: 'student',
       });
     });
 
-    it('should throw unauthorized exception for invalid password', async () => {
-      const loginDto = {
-        email: 'john@example.com',
-        password: 'wrong-password',
-      };
+    it('throws UnauthorizedException for an unknown email', async () => {
+      prisma.user.findFirst.mockResolvedValue(null);
 
-      const user = {
+      await expect(service.loginFrontend(dto)).rejects.toThrow(UnauthorizedException);
+    });
+
+    it('throws UnauthorizedException for a wrong password', async () => {
+      prisma.user.findFirst.mockResolvedValue({
         id: 1,
-        name: 'John Doe',
-        email: 'john@example.com',
+        email: dto.email,
         role: 'student',
-        password: 'hashed-password',
-      };
+        tenantId: 7,
+        password: await argon2.hash('other-password'),
+      });
 
-      jest.spyOn(usersService, 'findByEmail').mockResolvedValue(user);
-      jest.spyOn(service, 'verifyPassword').mockResolvedValue(false);
+      await expect(service.loginFrontend(dto)).rejects.toThrow(UnauthorizedException);
+    });
 
-      await expect(service.login(loginDto)).rejects.toThrow(UnauthorizedException);
+    it('throws TenantSuspendedException for a suspended tenant', async () => {
+      prisma.user.findFirst.mockResolvedValue({
+        id: 1,
+        email: dto.email,
+        role: 'student',
+        tenantId: 7,
+        password: await argon2.hash(dto.password),
+      });
+      raw.tenant.findUnique.mockResolvedValue({ status: 'suspended' });
+
+      await expect(service.loginFrontend(dto)).rejects.toThrow(TenantSuspendedException);
     });
   });
 
-  describe('verifyPassword', () => {
-    it('should verify password correctly', async () => {
-      const password = 'password123';
-      const hashedPassword = 'argon2-hash';
+  describe('login (admin)', () => {
+    const dto = { email: 'admin@example.com', password: 'password123' };
 
-      jest.spyOn(args as any, 'hash').mockResolvedValue(hashedPassword);
-      jest.spyOn(args as any, 'verify').mockResolvedValue(true);
+    it('logs in an admin with valid credentials', async () => {
+      prisma.admin.findUnique.mockResolvedValue({
+        id: 9,
+        email: dto.email,
+        role: 'admin',
+        tenantId: 7,
+        password: await argon2.hash(dto.password),
+      });
 
-      const isValid = await service.verifyPassword(password, hashedPassword);
-
-      expect(isValid).toBe(true);
-    });
-  });
-
-  describe('refreshToken', () => {
-    it('should successfully refresh token', async () => {
-      const refreshToken = 'refresh-token';
-      const decoded = { userId: 1 };
-
-      jest.spyOn(jwtService, 'verify').mockReturnValue(decoded);
-      jest.spyOn(usersService, 'findById').mockResolvedValue({ id: 1, role: 'student' });
-      jest.spyOn(jwtService, 'sign').mockReturnValue('new-token');
-
-      const result = await service.refreshToken(refreshToken);
+      const result = await service.login(dto, Principal.ADMIN);
 
       expect(result).toEqual({
-        accessToken: 'new-token',
-        refreshToken: 'new-token',
+        accessToken: 'access-token',
+        refreshToken: 'refresh-token',
+        principal: Principal.ADMIN,
       });
+    });
+
+    it('throws UnauthorizedException for invalid credentials', async () => {
+      prisma.admin.findUnique.mockResolvedValue(null);
+
+      await expect(service.login(dto, Principal.ADMIN)).rejects.toThrow(UnauthorizedException);
+    });
+  });
+
+  describe('refresh', () => {
+    it('issues fresh tokens for a valid refresh token', async () => {
+      jwt.verifyAsync.mockResolvedValue({
+        sub: 1,
+        principal: Principal.STUDENT,
+        email: 'john@example.com',
+        tenantId: 7,
+      });
+
+      const result = await service.refresh('refresh-token');
+
+      expect(jwt.verifyAsync).toHaveBeenCalledWith('refresh-token', {
+        secret: 'secret:jwt.refreshSecret',
+      });
+      expect(result).toEqual({
+        accessToken: 'access-token',
+        refreshToken: 'refresh-token',
+        principal: Principal.STUDENT,
+      });
+    });
+
+    it('throws UnauthorizedException for an invalid refresh token', async () => {
+      jwt.verifyAsync.mockRejectedValue(new Error('jwt malformed'));
+
+      await expect(service.refresh('bogus')).rejects.toThrow(UnauthorizedException);
+    });
+  });
+
+  describe('assertTenantActive', () => {
+    it('passes for an active tenant', async () => {
+      raw.tenant.findUnique.mockResolvedValue({ status: 'active' });
+
+      await expect(service.assertTenantActive(7)).resolves.toBeUndefined();
+    });
+
+    it('throws TenantSuspendedException for a suspended tenant', async () => {
+      raw.tenant.findUnique.mockResolvedValue({ status: 'suspended' });
+
+      await expect(service.assertTenantActive(7)).rejects.toThrow(TenantSuspendedException);
+    });
+
+    it('treats a missing tenant as suspended', async () => {
+      raw.tenant.findUnique.mockResolvedValue(null);
+
+      await expect(service.assertTenantActive(404)).rejects.toThrow(TenantSuspendedException);
     });
   });
 });

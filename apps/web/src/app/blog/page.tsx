@@ -34,7 +34,6 @@ export default function BlogPage() {
             <Link key={p.id} href={`/blog/${p.slug}`} className="card group overflow-hidden transition hover:shadow-lift">
               <div className="aspect-[16/9] bg-brand-soft">
                 {p.image ? (
-                  // eslint-disable-next-line @next/next/no-img-element
                   <img src={p.image} alt="" className="h-full w-full object-cover" />
                 ) : (
                   <div className="grid h-full place-items-center text-3xl font-black text-brand/30">{p.title[0]}</div>

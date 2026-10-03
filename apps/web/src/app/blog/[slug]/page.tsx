@@ -43,7 +43,6 @@ export default function BlogDetailPage({ params }: { params: { slug: string } })
       <h1 className="mt-3 text-4xl font-extrabold">{post.title}</h1>
       <div className="mt-2 text-sm text-muted">{new Date(post.createdAt).toLocaleDateString()}</div>
       {post.image && (
-        // eslint-disable-next-line @next/next/no-img-element
         <img src={post.image} alt="" className="mt-6 aspect-[16/9] w-full rounded-2xl object-cover" />
       )}
       <div className="rich-text mt-8" dangerouslySetInnerHTML={{ __html: post.description ?? '' }} />

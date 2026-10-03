@@ -16,7 +16,6 @@ export function AuthSidePanel() {
     <div className="relative hidden overflow-hidden bg-[#0a1929] lg:flex lg:flex-col lg:justify-between lg:p-12">
       <div className="relative z-10 mx-auto w-full max-w-md">
         <div className="overflow-hidden rounded-2xl">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={SIDE_IMG} alt="" className="aspect-[4/3] w-full object-cover" />
         </div>
         <h2 className="mt-10 font-display text-4xl font-semibold leading-tight text-white">

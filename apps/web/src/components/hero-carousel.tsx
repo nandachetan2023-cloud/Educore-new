@@ -42,7 +42,6 @@ export function HeroCarousel({ title, subtitle, primaryHref, primaryLabel, secon
   useEffect(() => {
     start();
     return () => { if (timer.current) clearInterval(timer.current); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const goTo = (i: number) => { setIndex(i); start(); };
@@ -51,7 +50,6 @@ export function HeroCarousel({ title, subtitle, primaryHref, primaryLabel, secon
     <section className="relative isolate min-h-[560px] overflow-hidden bg-ink text-white lg:min-h-[640px]">
       {/* Background images */}
       {SLIDES.map(({ src }, i) => (
-        // eslint-disable-next-line @next/next/no-img-element
         <img
           key={src}
           src={src}

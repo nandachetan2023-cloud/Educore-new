@@ -90,7 +90,6 @@ export default function CourseDetailPage({ params }: { params: { slug: string } 
     <div className="bg-surface">
       {/* ── Dark hero ── */}
       <div className="relative overflow-hidden bg-[#101418] text-white">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src={HERO_BG} alt="" aria-hidden className="absolute inset-0 h-full w-full object-cover opacity-30" />
         <div className="absolute inset-0 bg-gradient-to-r from-[#101418] via-[#101418]/80 to-[#101418]/30" />
         <div className="container-page relative py-14 lg:py-20">
@@ -206,7 +205,6 @@ export default function CourseDetailPage({ params }: { params: { slug: string } 
             <h2 className="text-xl font-bold text-ink">Instructor</h2>
             <div className="mt-4 flex items-center gap-4">
               {course.instructor.image ? (
-                // eslint-disable-next-line @next/next/no-img-element
                 <img src={course.instructor.image} alt={course.instructor.name} className="h-20 w-20 rounded-full object-cover" />
               ) : (
                 <span className="grid h-20 w-20 place-items-center rounded-full bg-brand-soft text-2xl font-bold text-brand">

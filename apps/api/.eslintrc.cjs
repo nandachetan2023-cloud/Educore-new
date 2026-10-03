@@ -1,0 +1,18 @@
+module.exports = {
+  parser: '@typescript-eslint/parser',
+  parserOptions: {
+    sourceType: 'module',
+  },
+  plugins: ['@typescript-eslint/eslint-plugin'],
+  root: true,
+  env: {
+    node: true,
+    jest: true,
+    es2021: true,
+  },
+  ignorePatterns: ['dist/', 'node_modules/', 'coverage/', '*.js'],
+  rules: {
+    '@typescript-eslint/no-explicit-any': 'off',
+    '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
+  },
+};

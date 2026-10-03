@@ -88,7 +88,6 @@ export default function CourseStudioPage({ params }: { params: { id: string } })
       return;
     }
     load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, authLoading]);
 
   const selected = chapters.flatMap((c) => c.lessons).find((l) => l.id === selectedId) ?? null;
