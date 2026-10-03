@@ -15,14 +15,18 @@ import { RawBodyRequest } from '@nestjs/common';
 import { Request } from 'express';
 import { IsIn, IsOptional, IsString } from 'class-validator';
 import { Gateway, OrdersService } from './orders.service';
+import { PrismaService } from '../prisma/prisma.service';
+import { CouponsModule } from '../coupons/coupons.module';
 import { StripeService } from '../payments/stripe.service';
 import { PayPalService } from '../payments/paypal.service';
-import { RazorpayService } from '../payments/razorpay.service';
+import { PaymentsModule } from '../payments/payments.module';
 import { Public, Roles, CurrentUser } from '../common/decorators';
 import { Principal } from '../common/enums';
 
 class CheckoutDto {
   @IsOptional() @IsIn(['stripe', 'paypal', 'razorpay']) gateway?: Gateway;
+  /** Admin-issued discount code. Re-validated server-side; never trusted from the client. */
+  @IsOptional() @IsString() couponCode?: string;
 }
 class PaypalCaptureDto {
   @IsString() paypalOrderId!: string;
@@ -54,7 +58,7 @@ export class OrdersController {
     @CurrentUser('email') email: string,
     @Body() dto: CheckoutDto,
   ) {
-    return this.orders.checkout(userId, email, dto.gateway ?? 'stripe');
+    return this.orders.checkout(userId, email, dto.gateway ?? 'stripe', dto.couponCode);
   }
 
   @Roles(Principal.STUDENT, Principal.INSTRUCTOR)
@@ -117,7 +121,8 @@ export class OrdersController {
 }
 
 @Module({
-  providers: [OrdersService, StripeService, PayPalService, RazorpayService],
+  imports: [CouponsModule, PaymentsModule],
+  providers: [OrdersService, StripeService, PayPalService],
   controllers: [OrdersController],
   exports: [OrdersService],
 })

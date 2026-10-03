@@ -20,6 +20,7 @@ import { CategoriesModule } from './categories/categories.module';
 import { TaxonomyModule } from './taxonomy/taxonomy.module';
 import { CartModule } from './cart/cart.module';
 import { OrdersModule } from './orders/orders.module';
+import { CouponsModule } from './coupons/coupons.module';
 import { ContentModule } from './content/content.module';
 import { LearnModule } from './learn/learn.module';
 import { ReviewsModule } from './reviews/reviews.module';
@@ -31,6 +32,7 @@ import { CmsModule } from './cms/cms.module';
 import { BlogModule } from './blog/blog.module';
 import { UploadsModule } from './uploads/uploads.module';
 import { MailModule } from './mail/mail.module';
+import { PaymentsModule } from './payments/payments.module';
 import { BrandingModule } from './branding/branding.module';
 import { AdminsModule } from './admins/admins.module';
 import { HealthModule } from './health/health.module';
@@ -74,6 +76,7 @@ import { DomainsModule } from './domains/domains.module';
     CategoriesModule,
     TaxonomyModule,
     CartModule,
+    CouponsModule,
     OrdersModule,
     ContentModule,
     LearnModule,
@@ -86,6 +89,7 @@ import { DomainsModule } from './domains/domains.module';
     BlogModule,
     UploadsModule,
     MailModule,
+    PaymentsModule,
     BrandingModule,
     AdminsModule,
     HealthModule,

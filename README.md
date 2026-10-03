@@ -12,7 +12,7 @@ A white-label LMS / online course marketplace — a Node.js (NestJS + Next.js) p
 | ORM      | Prisma 5 (PostgreSQL)                    |
 | Auth     | JWT (access + refresh), Argon2 hashing   |
 | Frontend | Next.js (App Router) — _scaffold pending_|
-| Payments | Stripe → PayPal → Razorpay _(roadmap)_   |
+| Payments | Stripe, PayPal, Razorpay — all three wired |
 
 ## Layout
 
@@ -66,6 +66,43 @@ Log in for all of them at `/login`; tick **"administrator"** for the two admin t
 - **Super-admin** is the top tier. Only super-admins can rebrand the platform (`Admin → Branding`) and manage admin accounts (`Admin → Admins`: create / promote / demote / remove, with a guard against deleting the last super-admin). Enforced server-side via a `@SuperAdmin()` guard — regular admins get **403**.
 - **Admin** handles day-to-day moderation (course/instructor approvals, reviews, withdrawals, CMS, blog) but cannot touch branding or admin accounts.
 
+## Coupons & offers
+
+Admins run sales from **Admin → Coupons & offers** (`/dashboard/admin/coupons`), which holds both promotion kinds:
+
+- **Coupon codes** — a code shoppers type in the cart (`WELCOME10`). Percentage or fixed amount, with an optional maximum discount, minimum order value, total-use cap, per-buyer cap, start/end window, and a scope of *every course*, *selected courses*, or *selected categories*.
+- **Offers / flash sales** — no code. A time-boxed campaign that discounts its scoped courses automatically during the sale window, with a badge, banner and copy that appear in the "On sale right now" strip on the home page.
+
+Rules that apply to both:
+
+- **One promotion per order.** The best of (entered coupon, running offer) wins, so shoppers never stack discounts by accident; a coupon wins ties.
+- **Pricing is server-authoritative.** `GET /cart`, `POST /coupons/validate` and `POST /checkout` all recompute from the database — a stale or hand-edited client total is ignored. The discounted amount is what Stripe/PayPal/Razorpay charge, and a 100%-off coupon settles as a free enrollment.
+- **Discounts reduce instructor commission**, exactly like a course-level discount does, so a sale costs the platform rather than instructors.
+- **Usage is recorded on fulfillment**, not on checkout: `CouponRedemption` rows plus `usedCount`, idempotent per order so a replayed payment webhook can't double-count. `GET /admin/coupons/summary` reports active promos, redemptions and total revenue given back.
+- Coupons and offers are tenant-scoped like every other catalog row — create them from a **tenant admin** (e.g. `admin@gmail.com`). Rows created by the platform super-admin (who belongs to no tenant) stay in the platform tenant and won't be seen by that tenant's shoppers.
+
+## Payment gateways
+
+Checkout supports three gateways. `GET /checkout/gateways` reports which are usable, so the cart only offers options that can actually complete.
+
+| Gateway | Configured in | Notes |
+| --- | --- | --- |
+| **Razorpay** / UPI | Admin → Settings → Payments, falling back to `RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET` | Cards, netbanking, UPI, wallets |
+| Stripe | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | Redirect via Checkout Session + signed webhook |
+| PayPal | `PAYPAL_CLIENT_ID`, `PAYPAL_CLIENT_SECRET`, `PAYPAL_MODE` | Orders API, capture on return |
+
+**Razorpay** keys can be entered in the admin UI instead of `.env`. Stored values override the environment, take effect immediately (no API restart), and sending an empty string falls back to `.env`. The key secret is never echoed back — the API returns a mask, and `razorpay.*` keys are redacted from the public `GET /cms/settings` feed.
+
+- `GET /admin/payment-settings` · `PUT /admin/payment-settings` — super-admin only
+- `POST /admin/payment-settings/razorpay/test` — read-only credential check against Razorpay's API
+- Use `rzp_test_` keys while developing; `rzp_live_` keys charge real money.
+
+Flow: `POST /checkout` with `gateway: "razorpay"` creates the order server-side and returns a `razorpay` block (`keyId`, `razorpayOrderId`, `amount`, `currency`). The browser opens Razorpay's widget, then posts the widget's `razorpay_payment_id` + `razorpay_signature` to `POST /checkout/razorpay/:orderId/verify`. **Payment is only fulfilled after the HMAC-SHA256 signature validates against the configured secret** (`timingSafeEqual`), so a forged payment id cannot enroll a buyer. No Razorpay SDK is required — the service is a thin `fetch` + Basic-auth client.
+
+An all-free cart (e.g. a 100%-off coupon) is fulfilled immediately without touching any gateway.
+
+> Stripe and PayPal are still `.env`-only — the admin screen currently manages Razorpay credentials.
+
 ## Implemented endpoints
 
 **Auth** — `POST /auth/register` · `/auth/login` · `/auth/admin/login` · `/auth/refresh` · `GET /auth/me`
@@ -73,7 +110,9 @@ Log in for all of them at `/login`; tick **"administrator"** for the two admin t
 **Course content** (instructor) — `GET|POST|PUT|DELETE /courses/:id/content/chapters` · `.../lessons`
 **Categories** — `GET /categories` (+ admin CRUD)
 **Cart** — `GET /cart` · `POST /cart/:courseId` · `DELETE /cart/:id`
-**Checkout / orders** — `POST /checkout` (free-fulfill or Stripe) · `POST /checkout/webhook` · `GET /orders` · `GET /orders/:id`
+**Checkout / orders** — `POST /checkout` (free-fulfill or `gateway: stripe|paypal|razorpay`, accepts `couponCode`) · `GET /checkout/gateways` · `POST /checkout/webhook` (Stripe) · `POST /checkout/razorpay/:orderId/verify` · `POST /checkout/paypal/:orderId/capture` · `GET /orders` · `GET /orders/:id`
+**Payment settings** — `GET|PUT /admin/payment-settings` · `POST /admin/payment-settings/razorpay/test` (super-admin)
+**Coupons & offers** — `GET /admin/coupons` (+ create/update/delete) · `GET /admin/coupons/summary` · `GET /admin/coupons/:id/redemptions` · `GET|POST|PUT|DELETE /admin/offers` · `POST /coupons/validate` (student) · `GET /coupons/offers` (public storefront feed)
 **Learning** — `GET /learn` (enrolled + progress) · `GET /learn/:slug` (player) · `GET /learn/lesson/:id` · `POST /learn/lesson/:id/watch` · `.../complete`
 **Reviews** — `POST /reviews` (enrolled-only, moderated)
 **Taxonomy** — `GET /levels` · `GET /languages` (+ admin create)
@@ -89,7 +128,7 @@ Log in for all of them at `/login`; tick **"administrator"** for the two admin t
 
 Runs on `http://localhost:3000`. Themes itself from `/api/branding` via CSS variables — change brand colors with zero rebuild.
 
-Pages: home (hero + categories + featured), course catalog (search/filter/paginate), course detail (curriculum + reviews + add-to-cart), login/register (with admin toggle & role picker), cart + Stripe checkout, checkout success, student dashboard (progress tracking), instructor dashboard, and the **course player** (video/YouTube/Vimeo embed, curriculum sidebar, mark-complete, live progress).
+Pages: home (hero + categories + featured + live offers strip), course catalog (search/filter/paginate), course detail (curriculum + reviews + add-to-cart), login/register (with admin toggle & role picker), cart (coupon code entry + offer savings) + Stripe checkout, checkout success, student dashboard (progress tracking), instructor dashboard, and the **course player** (video/YouTube/Vimeo embed, curriculum sidebar, mark-complete, live progress). Admin gets the **coupons & offers console** at `/dashboard/admin/coupons` and the **payment gateway screen** at `/dashboard/admin/settings/payment`.
 
 ```bash
 cd apps/web
@@ -128,6 +167,7 @@ This is the **rebrandable-product** model: each buyer deploys their own copy and
 - [x] File/image upload (local disk driver + static serving) wired into course thumbnails
 - [x] SMTP mail (instructor approval/rejection), degrades to logging without a mail server
 - [x] Live end-to-end DB run verified (full create→approve→enroll→complete→certificate lifecycle)
+- [x] Coupons & offers: admin console, coupon redemption + usage caps, auto-applied offers, cart/checkout/Storefront pricing
 - [ ] S3 upload driver (local driver done; S3 branch stubbed)
 - [ ] Production hardening: versioned Prisma migrations, CI, automated test suite
 
@@ -136,3 +176,4 @@ This is the **rebrandable-product** model: each buyer deploys their own copy and
 - A few CMS content-block columns (hero, feature, footer, testimonial, blog) were inferred from model names rather than the original migrations — **reconcile against the Laravel migrations before relying on them.**
 - The schema targets **PostgreSQL**. `prisma db push` is used for schema sync; generate versioned migrations (`prisma migrate dev`) before production.
 - `certificates` uses **pdfkit** (pure-JS, no headless Chromium) for reliability; the original's positional certificate-builder can be layered on later.
+- `npm run lint` is currently a no-op failure in both workspaces — neither ships an ESLint config, so `eslint` exits before reading any source. Add a config before relying on the lint gate.

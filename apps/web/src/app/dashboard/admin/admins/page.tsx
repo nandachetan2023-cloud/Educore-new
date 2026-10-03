@@ -5,20 +5,23 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { api, ApiError } from '@/lib/api';
 import { useAuth } from '@/lib/providers';
+import type { TenantRow } from '@/lib/types';
 
-interface AdminRow { id: number; name: string; email: string; role: 'admin' | 'super_admin'; createdAt: string }
+interface AdminRow { id: number; name: string; email: string; role: 'admin' | 'super_admin'; tenantId: number | null; tenant?: { id: number; name: string; slug: string } | null; createdAt: string }
 
 export default function AdminsPage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
   const [admins, setAdmins] = useState<AdminRow[]>([]);
+  const [tenants, setTenants] = useState<TenantRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [form, setForm] = useState({ name: '', email: '', password: '', role: 'admin' as 'admin' | 'super_admin' });
+  const [form, setForm] = useState({ name: '', email: '', password: '', role: 'admin' as 'admin' | 'super_admin', tenantId: '' });
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
   const load = useCallback(() => {
     api<AdminRow[]>('/admin/admins').then(setAdmins).catch(() => setAdmins([])).finally(() => setLoading(false));
+    api<TenantRow[]>('/admin/tenants').then(setTenants).catch(() => setTenants([]));
   }, []);
 
   useEffect(() => {
@@ -32,10 +35,26 @@ export default function AdminsPage() {
     e.preventDefault();
     setMsg(null); setErr(null);
     try {
-      await api('/admin/admins', { method: 'POST', body: JSON.stringify(form) });
-      setForm({ name: '', email: '', password: '', role: 'admin' });
+      await api('/admin/admins', {
+        method: 'POST',
+        body: JSON.stringify({
+          ...form,
+          tenantId: form.tenantId ? Number(form.tenantId) : null,
+        }),
+      });
+      setForm({ name: '', email: '', password: '', role: 'admin', tenantId: '' });
       setMsg('Admin created.'); load();
     } catch (e) { setErr(e instanceof ApiError ? e.message : 'Failed to create admin'); }
+  };
+
+  const setTenant = async (a: AdminRow, tenantId: string) => {
+    try {
+      await api(`/admin/admins/${a.id}/tenant`, {
+        method: 'PUT',
+        body: JSON.stringify({ tenantId: tenantId ? Number(tenantId) : null }),
+      });
+      load();
+    } catch (e) { setErr(e instanceof ApiError ? e.message : 'Failed to assign workspace'); }
   };
 
   const toggleRole = async (a: AdminRow) => {
@@ -62,17 +81,40 @@ export default function AdminsPage() {
 
       <div className="card mt-6 divide-y divide-line">
         {admins.map((a) => (
-          <div key={a.id} className="flex items-center gap-4 p-5">
+          <div key={a.id} className="flex flex-wrap items-center gap-4 p-5">
             <div className="grid h-10 w-10 place-items-center rounded-full bg-brand-soft font-semibold text-brand">{a.name[0]}</div>
-            <div className="flex-1">
-              <div className="flex items-center gap-2">
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
                 <span className="font-semibold">{a.name}</span>
                 {a.role === 'super_admin'
                   ? <span className="badge bg-brand text-white">Super-admin</span>
                   : <span className="badge">Admin</span>}
                 {a.id === user?.id && <span className="text-xs text-muted">(you)</span>}
+                {a.tenant
+                  ? <Link href={`/dashboard/superadmin/tenants/${a.tenant.id}`} className="badge bg-brand-soft text-brand hover:underline">{a.tenant.name}</Link>
+                  : <span className="badge">Platform</span>}
               </div>
               <div className="text-sm text-muted">{a.email}</div>
+              {a.role === 'admin' && (
+                <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                  <label className="text-muted">White-label workspace:</label>
+                  <select
+                    className="input max-w-[220px] py-1 text-xs"
+                    value={a.tenantId ? String(a.tenantId) : ''}
+                    onChange={(e) => setTenant(a, e.target.value)}
+                  >
+                    <option value="">Platform (no tenant)</option>
+                    {tenants.map((t) => (
+                      <option key={t.id} value={t.id}>{t.name} (/{t.slug})</option>
+                    ))}
+                  </select>
+                  {a.tenantId && (
+                    <Link href={`/dashboard/superadmin/tenants/${a.tenantId}`} className="text-brand hover:underline">
+                      Edit white label →
+                    </Link>
+                  )}
+                </div>
+              )}
             </div>
             <div className="flex gap-2">
               <button onClick={() => toggleRole(a)} className="btn-ghost px-3 py-2 text-sm">
@@ -95,6 +137,17 @@ export default function AdminsPage() {
           <select className="input" value={form.role} onChange={(e) => setForm((f) => ({ ...f, role: e.target.value as 'admin' | 'super_admin' }))}>
             <option value="admin">Admin</option>
             <option value="super_admin">Super-admin</option>
+          </select>
+          <select
+            className="input sm:col-span-2"
+            value={form.tenantId}
+            onChange={(e) => setForm((f) => ({ ...f, tenantId: e.target.value }))}
+            disabled={form.role === 'super_admin'}
+          >
+            <option value="">Platform-level (no white-label workspace)</option>
+            {tenants.map((t) => (
+              <option key={t.id} value={t.id}>{t.name} (/{t.slug}) — white label applies</option>
+            ))}
           </select>
         </div>
         {msg && <p className="text-sm text-green-600">{msg}</p>}

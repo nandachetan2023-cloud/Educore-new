@@ -227,6 +227,10 @@ model User {
   approveStatus   ApproveStatus @default(pending) @map("approve_status")
   loginAs         LoginAs?      @map("login_as")
   wallet          Float         @default(0)
+  // Social login links — set on first OAuth sign-in or when an existing
+  // email account signs in via a provider. Globally unique per provider.
+  googleId        String?       @unique @map("google_id")
+  githubId        String?       @unique @map("github_id")
   rememberToken   String?       @map("remember_token") @db.VarChar(100)
   createdAt       DateTime      @default(now()) @map("created_at")
   updatedAt       DateTime      @updatedAt @map("updated_at")
@@ -428,6 +432,9 @@ model Order {
   hasCoupon     Boolean     @default(false) @map("has_coupon")
   couponCode    String?     @map("coupon_code")
   couponAmount  Float?      @map("coupon_amount")
+  offerId       Int?        @map("offer_id")
+  offerTitle    String?     @map("offer_title")
+  offerAmount   Float?      @map("offer_amount")
   transactionId String      @map("transaction_id")
   paymentMethod String      @map("payment_method")
   createdAt     DateTime    @default(now()) @map("created_at")
@@ -458,6 +465,102 @@ model OrderItem {
   @@index([tenantId])
   @@index([orderId])
   @@map("order_items")
+}
+
+// ─────────────────────────────────────────────────────────────
+//  Coupons & offers (admin-created sales promotions)
+// ─────────────────────────────────────────────────────────────
+enum DiscountType {
+  percentage
+  fixed
+}
+
+enum DiscountTarget {
+  all
+  courses
+  categories
+}
+
+model Coupon {
+  id             Int            @id @default(autoincrement())
+  tenantId       Int            @default(0) @map("tenant_id")
+  code           String
+  description    String?        @db.Text
+  type           DiscountType   @default(percentage)
+  value          Float
+  minOrderAmount Float?         @map("min_order_amount")
+  maxDiscount    Float?         @map("max_discount")
+  target         DiscountTarget @default(all)
+  courseIds      Int[]          @map("course_ids")
+  categoryIds    Int[]          @map("category_ids")
+  usageLimit     Int?           @map("usage_limit")
+  perUserLimit   Int            @default(1) @map("per_user_limit")
+  usedCount      Int            @default(0) @map("used_count")
+  startsAt       DateTime?      @map("starts_at")
+  endsAt         DateTime?      @map("ends_at")
+  status         Boolean        @default(true)
+  createdAt      DateTime       @default(now()) @map("created_at")
+  updatedAt      DateTime       @updatedAt @map("updated_at")
+
+  redemptions CouponRedemption[]
+
+  @@unique([tenantId, code])
+  @@index([tenantId])
+  @@map("coupons")
+}
+
+/// One row per completed order that used a coupon — drives the admin usage
+/// stats and the per-user limit check. `orderId` is unique so a replayed
+/// fulfillment webhook can't double-count a redemption.
+model CouponRedemption {
+  id             Int      @id @default(autoincrement())
+  tenantId       Int      @default(0) @map("tenant_id")
+  couponId       Int      @map("coupon_id")
+  orderId        Int      @map("order_id")
+  userId         Int      @map("user_id")
+  amount         Float
+  orderTotal     Float    @map("order_total")
+  courseCount    Int      @default(0) @map("course_count")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  coupon Coupon @relation(fields: [couponId], references: [id], onDelete: Cascade)
+
+  @@unique([orderId])
+  @@index([tenantId])
+  @@index([couponId])
+  @@index([userId])
+  @@map("coupon_redemptions")
+}
+
+/// A time-boxed sale that applies automatically (no code) to a set of courses
+/// or categories, and can be merchandised on the storefront with a banner.
+model Offer {
+  id          Int            @id @default(autoincrement())
+  tenantId    Int            @default(0) @map("tenant_id")
+  title       String
+  slug        String
+  subtitle    String?
+  description String?        @db.Text
+  banner      String?
+  badge       String?
+  type        DiscountType   @default(percentage)
+  value       Float
+  maxDiscount Float?         @map("max_discount")
+  target      DiscountTarget @default(all)
+  courseIds   Int[]          @map("course_ids")
+  categoryIds Int[]          @map("category_ids")
+  priority    Int            @default(0)
+  usedCount   Int            @default(0) @map("used_count")
+  startsAt    DateTime?      @map("starts_at")
+  endsAt      DateTime?      @map("ends_at")
+  status      Boolean        @default(true)
+  createdAt   DateTime       @default(now()) @map("created_at")
+  updatedAt   DateTime       @updatedAt @map("updated_at")
+
+  @@unique([tenantId, slug])
+  @@index([tenantId])
+  @@map("offers")
 }
 
 model Enrollment {

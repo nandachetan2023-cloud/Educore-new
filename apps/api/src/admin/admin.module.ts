@@ -1,8 +1,16 @@
 import { Body, Controller, Get, Module, Param, ParseIntPipe, Post, Query } from '@nestjs/common';
+import { IsEmail, IsIn, IsOptional, IsString, MinLength } from 'class-validator';
 import { ApiTags } from '@nestjs/swagger';
 import { AdminService } from './admin.service';
 import { Roles, SuperAdmin } from '../common/decorators';
 import { Principal } from '../common/enums';
+
+class InviteUserDto {
+  @IsString() name!: string;
+  @IsEmail() email!: string;
+  @IsIn(['student', 'instructor']) role!: 'student' | 'instructor';
+  @IsOptional() @IsString() @MinLength(8) password?: string;
+}
 
 @ApiTags('admin')
 @Controller('admin')
@@ -58,6 +66,11 @@ export class AdminController {
   @Get('students')
   students() {
     return this.admin.students();
+  }
+
+  @Post('users')
+  inviteUser(@Body() dto: InviteUserDto) {
+    return this.admin.inviteUser(dto);
   }
 
   // Destructive — only the top admin tier may wipe transactional data.

@@ -25,6 +25,9 @@ apps/api/storage/uploads/*
 # local-only scratch (moved-aside dead code, not part of the app)
 apps/api/_dead_code_removed/
 
+# agent tooling state (local session history, not source)
+.kilocode/
+
 # os / editor
 .DS_Store
 Thumbs.db

@@ -1,4 +1,6 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import * as argon2 from 'argon2';
+import { randomBytes } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { MailService } from '../mail/mail.module';
 
@@ -18,7 +20,7 @@ export class AdminService {
     return this.prisma.user.findMany({
       where: { role: 'instructor', ...(status ? { approveStatus: status as any } : {}) },
       select: {
-        id: true, name: true, email: true, headline: true, image: true,
+        id: true, name: true, email: true, headline: true, image: true, bio: true,
         approveStatus: true, wallet: true, createdAt: true,
         _count: { select: { courses: true } },
       },
@@ -123,10 +125,40 @@ export class AdminService {
     return this.prisma.user.findMany({
       where: { role: 'student' },
       select: {
-        id: true, name: true, email: true, image: true, createdAt: true,
+        id: true, name: true, email: true, image: true, headline: true, bio: true,
+        approveStatus: true, wallet: true, createdAt: true,
         _count: { select: { enrollments: true } },
       },
       orderBy: { createdAt: 'desc' },
     });
+  }
+
+  /**
+   * Admin-invited account (directory "Invite" button). Admin-created users
+   * are trusted on creation: approved + email-verified immediately.
+   * Returns the record plus a one-time temp password for the admin to pass
+   * on — it is never stored or returned again.
+   */
+  async inviteUser(dto: { name: string; email: string; role: 'student' | 'instructor'; password?: string }) {
+    const email = dto.email.toLowerCase();
+    const existing = await this.prisma.user.findFirst({ where: { email } });
+    if (existing) throw new ConflictException('A user with this email already exists');
+    const tempPassword = dto.password?.trim() || randomBytes(6).toString('hex');
+    const user = await this.prisma.user.create({
+      data: {
+        name: dto.name.trim(),
+        email,
+        password: await argon2.hash(tempPassword),
+        role: dto.role,
+        approveStatus: 'approved',
+        emailVerifiedAt: new Date(),
+        wallet: 0,
+      },
+      select: {
+        id: true, name: true, email: true, image: true, role: true,
+        approveStatus: true, createdAt: true,
+      },
+    });
+    return { ...user, tempPassword: dto.password?.trim() ? undefined : tempPassword };
   }
 }

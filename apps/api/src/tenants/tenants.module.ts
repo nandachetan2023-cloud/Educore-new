@@ -110,6 +110,70 @@ export class TenantsService {
     this.tenantStatusCache.invalidate(id);
     return tenant;
   }
+
+  /**
+   * Platform-wide aggregates for the Superadmin overview dashboard.
+   * Everything here is cross-tenant by design — RAW_PRISMA throughout.
+   */
+  async platformStats() {
+    const [
+      tenantsByStatus,
+      subscriptions,
+      adminCount,
+      studentCount,
+      instructorCount,
+      courseCount,
+      enrollmentCount,
+      orderCount,
+      revenue,
+      plans,
+    ] = await Promise.all([
+      this.raw.tenant.groupBy({ by: ['status'], _count: { id: true } }),
+      this.raw.subscription.findMany({
+        where: { status: 'active' },
+        select: { plan: { select: { name: true, priceMonthly: true } } },
+      }),
+      this.raw.admin.count(),
+      this.raw.user.count({ where: { role: 'student' } }),
+      this.raw.user.count({ where: { role: 'instructor' } }),
+      this.raw.course.count(),
+      this.raw.enrollment.count(),
+      this.raw.order.count({ where: { status: 'approved' } }),
+      this.raw.order.aggregate({
+        where: { status: 'approved' },
+        _sum: { paidAmount: true },
+      }),
+      this.raw.plan.findMany({
+        select: { id: true, name: true, priceMonthly: true, _count: { select: { subscriptions: true } } },
+        orderBy: { priceMonthly: 'asc' },
+      }),
+    ]);
+
+    const byStatus: Record<string, number> = {};
+    for (const g of tenantsByStatus) byStatus[g.status] = g._count.id;
+    const totalTenants = Object.values(byStatus).reduce((n, c) => n + c, 0);
+
+    const mrrMinor = subscriptions.reduce((n, s) => n + (s.plan?.priceMonthly ?? 0), 0);
+
+    return {
+      tenants: {
+        total: totalTenants,
+        active: byStatus['active'] ?? 0,
+        pendingSetup: byStatus['pending_setup'] ?? 0,
+        pastDue: byStatus['past_due'] ?? 0,
+        suspended: byStatus['suspended'] ?? 0,
+      },
+      mrr: mrrMinor / 100,
+      revenueByPlan: plans.map((p) => ({ name: p.name, workspaces: p._count.subscriptions })),
+      learners: studentCount,
+      instructors: instructorCount,
+      staff: adminCount,
+      courses: courseCount,
+      enrollments: enrollmentCount,
+      orders: orderCount,
+      gmv: revenue._sum.paidAmount ?? 0,
+    };
+  }
 }
 
 @ApiTags('tenants')
@@ -145,8 +209,21 @@ export class TenantsController {
   }
 }
 
+@ApiTags('tenants')
+@Controller('admin/platform')
+@Roles(Principal.ADMIN)
+@SuperAdmin()
+export class PlatformController {
+  constructor(private tenants: TenantsService) {}
+
+  @Get('stats')
+  stats() {
+    return this.tenants.platformStats();
+  }
+}
+
 @Module({
   providers: [TenantsService],
-  controllers: [TenantsController],
+  controllers: [TenantsController, PlatformController],
 })
 export class TenantsModule {}

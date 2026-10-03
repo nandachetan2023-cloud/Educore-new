@@ -46,7 +46,7 @@ export default function BlogDetailPage({ params }: { params: { slug: string } })
         // eslint-disable-next-line @next/next/no-img-element
         <img src={post.image} alt="" className="mt-6 aspect-[16/9] w-full rounded-2xl object-cover" />
       )}
-      <div className="prose mt-8 max-w-none text-ink" dangerouslySetInnerHTML={{ __html: post.description ?? '' }} />
+      <div className="rich-text mt-8" dangerouslySetInnerHTML={{ __html: post.description ?? '' }} />
 
       <section className="mt-12 border-t border-line pt-8">
         <h2 className="text-xl font-bold">Comments ({post.comments.length})</h2>

@@ -1,18 +1,24 @@
 import './globals.css';
 import type { Metadata } from 'next';
-import { Poppins } from 'next/font/google';
+import { Inter, Source_Serif_4 } from 'next/font/google';
 import { cookies, headers } from 'next/headers';
 import { Providers } from '@/lib/providers';
-import { Navbar } from '@/components/navbar';
-import { Footer } from '@/components/footer';
+import { Chrome } from '@/components/chrome';
 import type { Branding } from '@/lib/types';
 
 const DEV_TENANT_COOKIE = 'educore.devTenant';
 
-const poppins = Poppins({
+const inter = Inter({
   subsets: ['latin'],
-  weight: ['400', '500', '600', '700', '800'],
   variable: '--font-sans',
+  display: 'swap',
+});
+
+const serifDisplay = Source_Serif_4({
+  subsets: ['latin'],
+  weight: ['400', '500', '600', '700'],
+  style: ['normal', 'italic'],
+  variable: '--font-display',
   display: 'swap',
 });
 
@@ -85,16 +91,12 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   return (
     <html
       lang="en"
-      className={poppins.variable}
+      className={`${inter.variable} ${serifDisplay.variable}`}
       style={{ '--brand-primary': primaryRgb, '--brand-secondary': secondaryRgb } as React.CSSProperties}
     >
       <body>
         <Providers branding={branding}>
-          <div className="flex min-h-screen flex-col">
-            <Navbar />
-            <main className="flex-1">{children}</main>
-            <Footer />
-          </div>
+          <Chrome>{children}</Chrome>
         </Providers>
       </body>
     </html>

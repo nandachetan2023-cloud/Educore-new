@@ -23,6 +23,22 @@ function tenantHeaders(): Record<string, string> {
   return devTenant ? { 'X-Tenant-Id': devTenant } : { 'X-Tenant-Domain': window.location.hostname };
 }
 
+/**
+ * Builds the backend URL that starts an OAuth sign-in (full-page redirect).
+ * Carries the same tenant context as API calls (dev cookie id or page
+ * hostname for custom domains) plus the requested role, so the callback
+ * can create the account in the right workspace.
+ */
+export function oauthStartUrl(provider: 'google' | 'github', role: 'student' | 'instructor' = 'student'): string {
+  const params = new URLSearchParams({ role });
+  if (typeof document !== 'undefined') {
+    const devTenant = readCookie(DEV_TENANT_COOKIE);
+    if (devTenant) params.set('tenant', devTenant);
+    else if (window.location.hostname) params.set('domain', window.location.hostname);
+  }
+  return `${BASE}/auth/oauth/${provider}?${params.toString()}`;
+}
+
 export const tokenStore = {
   get access() {
     return typeof window === 'undefined' ? null : localStorage.getItem(TOKEN_KEY);

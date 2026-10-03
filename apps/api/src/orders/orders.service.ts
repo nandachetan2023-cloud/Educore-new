@@ -7,6 +7,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { nanoid } from 'nanoid';
 import { PrismaService } from '../prisma/prisma.service';
+import { CouponsService } from '../coupons/coupons.module';
 import { StripeService } from '../payments/stripe.service';
 import { PayPalService } from '../payments/paypal.service';
 import { RazorpayService } from '../payments/razorpay.service';
@@ -23,16 +24,18 @@ export class OrdersService {
     private stripe: StripeService,
     private paypal: PayPalService,
     private razorpay: RazorpayService,
+    private coupons: CouponsService,
     private config: ConfigService,
   ) {}
 
   /** Which gateways are actually usable on this install (have credentials configured). */
-  availableGateways() {
+  async availableGateways() {
+    const razorpay = await this.razorpay.getConfig();
     return {
       stripe: this.stripe.enabled,
       paypal: this.paypal.enabled,
-      razorpay: this.razorpay.enabled,
-      razorpayKeyId: this.razorpay.enabled ? this.razorpay.publicKeyId : undefined,
+      razorpay: razorpay.enabled,
+      razorpayKeyId: razorpay.enabled ? razorpay.keyId : undefined,
     };
   }
 
@@ -40,17 +43,30 @@ export class OrdersService {
    * Turns the user's cart into a pending order, then either fulfills it
    * immediately (all-free cart) or hands back the chosen gateway's checkout
    * URL/handle. `gateway` defaults to Stripe for backward compatibility.
+   * `couponCode` is optional and re-validated here — the client never gets to
+   * decide what a cart costs.
    */
-  async checkout(userId: number, email: string, gateway: Gateway = 'stripe') {
+  async checkout(
+    userId: number,
+    email: string,
+    gateway: Gateway = 'stripe',
+    couponCode?: string,
+  ) {
     const cartItems = await this.prisma.cart.findMany({
       where: { userId },
       include: { course: { select: { id: true, title: true, price: true, discount: true } } },
     });
     if (cartItems.length === 0) throw new BadRequestException('Your cart is empty');
 
+    // Throws with a readable reason when a code is unknown, expired, used up or
+    // simply doesn't cover anything in the cart.
+    const promo = await this.coupons.priceCartForUser(userId, couponCode);
+
     const currency = this.config.get<string>('brand.currency')!;
     const commissionRate = this.config.get<number>('brand.commissionRate')!;
-    const total = cartItems.reduce((s, i) => s + netPrice(i.course), 0);
+    const total = promo.total;
+    const discounted = promo.discountTotal > 0;
+    const pricedByCourse = new Map(promo.priced.lines.map((l) => [l.courseId, l]));
 
     // Create the order + items up front so fulfillment is a pure state change.
     const order = await this.prisma.order.create({
@@ -61,12 +77,18 @@ export class OrdersService {
         totalAmount: total,
         paidAmount: 0,
         currency,
+        hasCoupon: Boolean(promo.couponCode),
+        couponCode: promo.couponCode,
+        couponAmount: promo.couponCode ? promo.discountTotal : null,
+        offerId: promo.offerId,
+        offerTitle: promo.offerTitle,
+        offerAmount: promo.offerId ? promo.discountTotal : null,
         transactionId: '',
         paymentMethod: total === 0 ? 'free' : gateway,
         items: {
           create: cartItems.map((i) => ({
             courseId: i.course.id,
-            price: netPrice(i.course),
+            price: pricedByCourse.get(i.course.id)?.final ?? netPrice(i.course),
             commissionRate,
           })),
         },
@@ -76,10 +98,26 @@ export class OrdersService {
 
     if (total === 0) {
       await this.fulfill(order.id, `FREE-${nanoid(8)}`);
-      return { free: true, orderId: order.id, invoiceId: order.invoiceId };
+      return {
+        free: true,
+        orderId: order.id,
+        invoiceId: order.invoiceId,
+        subtotal: promo.subtotal,
+        discount: promo.discountTotal,
+        total,
+        coupon: promo.coupon,
+        offer: promo.offer,
+      };
     }
 
     const web = this.config.get<string>('webUrl');
+    const receipt = {
+      subtotal: promo.subtotal,
+      discount: promo.discountTotal,
+      total,
+      coupon: promo.coupon,
+      offer: promo.offer,
+    };
 
     if (gateway === 'paypal') {
       const paypalOrder = await this.paypal.createOrder({
@@ -89,7 +127,7 @@ export class OrdersService {
         returnUrl: `${web}/checkout/paypal/return?order=${order.id}`,
         cancelUrl: `${web}/cart?canceled=1`,
       });
-      return { free: false, orderId: order.id, checkoutUrl: paypalOrder.approveUrl };
+      return { free: false, orderId: order.id, checkoutUrl: paypalOrder.approveUrl, ...receipt };
     }
 
     if (gateway === 'razorpay') {
@@ -101,8 +139,9 @@ export class OrdersService {
       return {
         free: false,
         orderId: order.id,
+        ...receipt,
         razorpay: {
-          keyId: this.razorpay.publicKeyId,
+          keyId: rpOrder.keyId,
           razorpayOrderId: rpOrder.id,
           amount: rpOrder.amount,
           currency: rpOrder.currency,
@@ -116,14 +155,14 @@ export class OrdersService {
       customerEmail: email,
       lineItems: cartItems.map((i) => ({
         name: i.course.title,
-        amountMinor: Math.round(netPrice(i.course) * 100),
+        amountMinor: Math.round((pricedByCourse.get(i.course.id)?.final ?? netPrice(i.course)) * 100),
         quantity: 1,
       })),
       successUrl: `${web}/checkout/success?order=${order.id}`,
       cancelUrl: `${web}/cart?canceled=1`,
     });
 
-    return { free: false, orderId: order.id, checkoutUrl: session.url };
+    return { free: false, orderId: order.id, checkoutUrl: session.url, ...receipt };
   }
 
   /** Called after the buyer approves payment on PayPal's site. */
@@ -143,7 +182,7 @@ export class OrdersService {
   ) {
     const order = await this.getForUser(userId, orderId);
     if (order.status === 'approved') return { ok: true };
-    if (!this.razorpay.verifySignature(payload)) {
+    if (!(await this.razorpay.verifySignature(payload))) {
       throw new BadRequestException('Payment verification failed');
     }
     await this.fulfill(orderId, payload.razorpayPaymentId);
@@ -211,7 +250,23 @@ export class OrdersService {
       });
     });
 
-    this.logger.log(`Order ${orderId} fulfilled (${courseIds.length} courses)`);
+    // Coupon/offer usage is only counted once money actually changed hands.
+    const discount = Math.max(order.couponAmount ?? 0, order.offerAmount ?? 0);
+    if (discount > 0) {
+      await this.coupons.recordRedemption({
+        id: order.id,
+        buyerId: order.buyerId,
+        totalAmount: order.totalAmount,
+        couponCode: order.couponCode,
+        offerId: order.offerId,
+        discount,
+        courseCount: courseIds.length,
+      });
+    }
+
+    this.logger.log(
+      `Order ${orderId} fulfilled (${courseIds.length} courses${discount > 0 ? `, ${discount.toFixed(2)} discounted` : ''})`,
+    );
   }
 
   async listForUser(userId: number) {

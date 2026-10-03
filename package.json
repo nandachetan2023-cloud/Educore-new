@@ -8,8 +8,12 @@
     "packages/*"
   ],
   "scripts": {
-    "dev:api": "npm run start:dev --workspace=@educore/api",
-    "dev:web": "npm run dev --workspace=@educore/web",
+    "dev": "concurrently \"npm:dev:api\" \"npm:dev:web\"",
+    "start": "concurrently \"npm:start:api\" \"npm:start:web\"",
+    "dev:api": "npm --prefix apps/api run start:dev",
+    "dev:web": "node scripts/run-next.cjs dev -p 3004",
+    "start:api": "npm --prefix apps/api run start",
+    "start:web": "node scripts/run-next.cjs start -p 3004",
     "build": "npm run build --workspace=@educore/api && npm run build --workspace=@educore/web",
     "db:generate": "npm run prisma:generate --workspace=@educore/api",
     "db:migrate": "npm run prisma:migrate --workspace=@educore/api",
@@ -21,5 +25,8 @@
   },
   "dependencies": {
     "passport": "^0.7.0"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.5"
   }
 }

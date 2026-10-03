@@ -22,7 +22,7 @@ export default async function CustomPageView({ params }: { params: { slug: strin
     <div className="container-page max-w-3xl py-16">
       <h1 className="text-4xl font-extrabold tracking-tight">{page.title}</h1>
       <div
-        className="prose mt-8 max-w-none text-ink"
+        className="rich-text mt-8"
         dangerouslySetInnerHTML={{ __html: page.content ?? '' }}
       />
     </div>

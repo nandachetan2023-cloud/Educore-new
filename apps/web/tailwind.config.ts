@@ -1,11 +1,17 @@
 import type { Config } from 'tailwindcss';
+import * as path from 'path';
+
+// Content paths are anchored to this file (not process.cwd()), so styles
+// build identically whether Next runs from apps/web (npm --prefix) or from
+// the repo root (root `npm run dev:web`, which keeps npm-noise away).
+const anchored = (glob: string) => path.join(__dirname, glob).replace(/\\/g, '/');
 
 /**
  * Colors are wired to CSS variables so the whole theme re-skins from the
  * white-label `/api/branding` response at runtime — no rebuild needed.
  */
 const config: Config = {
-  content: ['./src/**/*.{ts,tsx}'],
+  content: [anchored('src/**/*.{ts,tsx}')],
   darkMode: 'class',
   theme: {
     extend: {
@@ -23,6 +29,7 @@ const config: Config = {
       },
       fontFamily: {
         sans: ['var(--font-sans)', 'system-ui', 'sans-serif'],
+        display: ['var(--font-display)', 'Georgia', 'serif'],
       },
       borderRadius: {
         xl: '0.9rem',

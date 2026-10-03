@@ -2,282 +2,210 @@
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import {
+  ArrowRight, Award, BadgeCheck, BookOpen, CheckCircle2, Clock, Megaphone, Play, Search, Star, Tag, Users, Zap,
+} from 'lucide-react';
 import { api } from '@/lib/api';
 import { useBranding } from '@/lib/providers';
 import { CourseCard } from '@/components/course-card';
-import { HeroCarousel } from '@/components/hero-carousel';
-import type { CourseCard as Course, Category, Paginated, HomeCms } from '@/lib/types';
+import { CategoryIcon, Stars } from '@/components/ui';
+import type { CourseCard as Course, Category, Paginated, HomeCms, StorefrontOffer } from '@/lib/types';
 
-function Stars({ rating = 5 }: { rating?: number }) {
-  return (
-    <div className="flex gap-0.5 text-amber-400" aria-label={`${rating} out of 5 stars`}>
-      {Array.from({ length: 5 }).map((_, i) => (
-        <svg key={i} viewBox="0 0 20 20" className="h-4 w-4" fill={i < rating ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth={1.5}>
-          <path d="M10 1.5l2.6 5.27 5.82.85-4.21 4.1 1 5.8L10 14.9l-5.21 2.74 1-5.8-4.21-4.1 5.82-.85z" strokeLinejoin="round" />
-        </svg>
-      ))}
-    </div>
-  );
-}
+const HERO_IMG = 'https://images.unsplash.com/photo-1543269865-cbf427effbad?w=1200&q=80&auto=format&fit=crop';
 
-const HOW_IT_WORKS = [
-  {
-    step: '01',
-    icon: (
-      <svg className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
-      </svg>
-    ),
-    title: 'Find your course',
-    desc: 'Browse hundreds of courses across design, development, business, and more.',
-  },
-  {
-    step: '02',
-    icon: (
-      <svg className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 8.25h19.5M2.25 9h19.5m-16.5 5.25h6m-6 2.25h3m-3.75 3h15a2.25 2.25 0 0 0 2.25-2.25V6.75A2.25 2.25 0 0 0 19.5 4.5h-15a2.25 2.25 0 0 0-2.25 2.25v10.5A2.25 2.25 0 0 0 4.5 19.5Z" />
-      </svg>
-    ),
-    title: 'Enroll & start learning',
-    desc: 'One-click enrollment and immediate access to all course materials.',
-  },
-  {
-    step: '03',
-    icon: (
-      <svg className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M4.26 10.147a60.438 60.438 0 0 0-.491 6.347A48.62 48.62 0 0 1 12 20.904a48.62 48.62 0 0 1 8.232-4.41 60.46 60.46 0 0 0-.491-6.347m-15.482 0a50.636 50.636 0 0 0-2.658-.813A59.906 59.906 0 0 1 12 3.493a59.903 59.903 0 0 1 10.399 5.84c-.896.248-1.783.52-2.658.814m-15.482 0A50.717 50.717 0 0 1 12 13.489a50.702 50.702 0 0 1 3.74-3.342M6.75 15a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5Zm0 0v-3.675A55.378 55.378 0 0 1 12 8.443m-7.007 11.55A5.981 5.981 0 0 0 6.75 15.75v-1.5" />
-      </svg>
-    ),
-    title: 'Earn your certificate',
-    desc: 'Complete the course and receive a shareable digital certificate.',
-  },
+const WORDMARKS = ['TECHGIANT', 'CREATIVE-X', 'GLOBAL-EDU', 'FUTURE-TECH', 'INNOVATE'];
+
+const DEFAULT_PERKS = [
+  { icon: Users, tint: 'bg-blue-500/10 text-brand', title: 'Expert Community', desc: 'Connect with thousands of students and share knowledge in real-time.' },
+  { icon: Clock, tint: 'bg-green-500/10 text-green-600', title: 'Lifetime Access', desc: "Learn at your own pace. Once you buy, it's yours forever." },
+  { icon: BookOpen, tint: 'bg-slate-500/10 text-slate-600', title: 'Quality Resources', desc: 'Downloadable assets, source code, and project files included.' },
+  { icon: Award, tint: 'bg-rose-500/10 text-rose-500', title: 'Certification', desc: 'Earn industry-recognized certificates for every completed path.' },
 ];
 
-const CATEGORY_ICONS: Record<string, string> = {
-  design: '🎨', development: '💻', business: '💼', marketing: '📢',
-  photography: '📷', music: '🎵', health: '🏃', finance: '💰',
-  language: '🌍', data: '📊',
-};
-
-function getCategoryIcon(name: string) {
-  const key = name.toLowerCase().split(' ')[0];
-  return CATEGORY_ICONS[key] ?? '📚';
-}
+const CHECKLIST = [
+  'Watch on any device: Laptop, Tablet, or Mobile',
+  'Offline viewing enabled on mobile apps',
+  'Interactive quizzes and coding exercises',
+  'Direct communication with expert instructors',
+];
 
 export default function HomePage() {
   const branding = useBranding();
+  const router = useRouter();
   const [courses, setCourses] = useState<Course[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [cms, setCms] = useState<HomeCms | null>(null);
+  const [offers, setOffers] = useState<StorefrontOffer[]>([]);
   const [loading, setLoading] = useState(true);
+  const [heroQuery, setHeroQuery] = useState('');
 
   useEffect(() => {
     Promise.all([
-      api<Paginated<Course>>('/courses?perPage=8', { auth: false }).catch(() => null),
+      api<Paginated<Course>>('/courses?perPage=6', { auth: false }).catch(() => null),
       api<Category[]>('/categories', { auth: false }).catch(() => []),
       api<HomeCms>('/cms/home', { auth: false }).catch(() => null),
-    ]).then(([c, cats, home]) => {
+      api<StorefrontOffer[]>('/coupons/offers', { auth: false }).catch(() => []),
+    ]).then(([c, cats, home, liveOffers]) => {
       if (c) setCourses(c.data);
       setCategories(cats ?? []);
       setCms(home);
+      setOffers(liveOffers ?? []);
       setLoading(false);
     });
   }, []);
 
   const brandName = branding?.name ?? 'EduCore';
+  const featured = courses.slice(0, 3);
+  const topCategories = categories.slice(0, 8);
+  const testimonials = (cms?.testimonials?.length ? cms.testimonials : []).slice(0, 3);
+
+  const submitHeroSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    router.push(heroQuery.trim() ? `/courses?search=${encodeURIComponent(heroQuery.trim())}` : '/courses');
+  };
 
   return (
     <>
-      {/* Hero */}
-      <HeroCarousel
-        title={
-          <>
-            Learn without limits with{' '}
-            <span className="bg-gradient-to-r from-brand via-accent to-brand bg-clip-text text-transparent">
-              {brandName}
-            </span>
-          </>
-        }
-        subtitle="Build in-demand skills with courses from expert instructors. Learn at your own pace, on any device, and earn certificates as you go."
-        primaryHref="/courses"
-        primaryLabel="Browse courses"
-        secondaryHref="/become-instructor"
-        secondaryLabel={`Teach on ${brandName}`}
-      />
+      {/* ── Hero ─────────────────────────────────────────── */}
+      <section className="overflow-hidden bg-gradient-to-b from-brand-soft/60 via-card to-surface">
+        <div className="container-page grid items-center gap-12 py-14 lg:grid-cols-2 lg:py-20">
+          <div>
+            <span className="section-pill"><Zap className="mr-1.5 h-3.5 w-3.5" /> Unlock your potential</span>
+            <h1 className="mt-5 font-display text-[42px] font-semibold leading-[1.08] tracking-tight text-ink sm:text-6xl">
+              Master New Skills with the{' '}
+              <em className="text-brand">Best in Class</em> Experts.
+            </h1>
+            <p className="mt-5 max-w-lg text-[17px] leading-relaxed text-muted">
+              Access over 5,000+ world-class courses designed by industry leaders to help you advance your
+              career and achieve your personal goals.
+            </p>
 
-      {/* Trusted by */}
-      {!!cms?.brands?.length && (
-        <section className="border-b border-line bg-surface py-8">
-          <div className="container-page flex flex-wrap items-center justify-center gap-x-10 gap-y-4">
-            <p className="text-xs font-semibold uppercase tracking-widest text-muted">Trusted by learners at</p>
-            <div className="flex flex-wrap items-center justify-center gap-x-8 gap-y-4 opacity-50 grayscale">
-              {cms.brands.slice(0, 6).map((b) => (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img key={b.id} src={b.image} alt="" className="h-6 w-auto object-contain" />
-              ))}
-            </div>
-          </div>
-        </section>
-      )}
+            <form onSubmit={submitHeroSearch} className="mt-8 flex max-w-lg flex-col gap-3 sm:flex-row">
+              <label className="relative flex flex-1 items-center">
+                <Search className="absolute left-4 h-4 w-4 text-muted" />
+                <input
+                  value={heroQuery}
+                  onChange={(e) => setHeroQuery(e.target.value)}
+                  placeholder="What do you want to learn?"
+                  className="w-full rounded-full border border-line bg-card py-3.5 pl-11 pr-4 text-sm text-ink shadow-sm placeholder:text-muted focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+                />
+              </label>
+              <button type="submit" className="btn-primary rounded-full px-8 py-3.5 text-[15px]">
+                Explore Now
+              </button>
+            </form>
 
-      {/* Stats */}
-      {!!cms?.counters?.length && (
-        <section className="bg-brand py-14">
-          <div className="container-page grid grid-cols-2 gap-8 sm:grid-cols-4">
-            {cms.counters.map((c) => (
-              <div key={c.id} className="text-center">
-                <div className="text-4xl font-black text-white sm:text-5xl">{c.number}</div>
-                <div className="mt-1 text-sm font-medium text-white/70">{c.title}</div>
+            <div className="mt-9 flex items-center gap-6 sm:gap-8">
+              <div>
+                <div className="text-2xl font-extrabold text-ink">15k+</div>
+                <div className="mt-0.5 text-[13px] text-muted">Active Students</div>
               </div>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* Categories */}
-      {categories.length > 0 && (
-        <section id="categories" className="container-page py-16">
-          <div className="flex items-end justify-between">
-            <div>
-              <span className="badge">Explore</span>
-              <h2 className="mt-3 text-3xl font-extrabold tracking-tight">Top categories</h2>
-            </div>
-            <Link href="/courses" className="text-sm font-semibold text-brand hover:underline">All courses →</Link>
-          </div>
-          <div className="mt-8 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
-            {categories.map((cat) => (
-              <Link
-                key={cat.id}
-                href={`/courses?category=${cat.slug}`}
-                className="group flex flex-col items-center gap-3 rounded-2xl border border-line bg-card p-5 text-center transition-all hover:-translate-y-1 hover:border-brand/40 hover:shadow-lift"
-              >
-                {cat.icon ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={cat.icon} alt="" className="h-10 w-10 object-contain" />
-                ) : (
-                  <span className="grid h-12 w-12 place-items-center rounded-2xl bg-brand-soft text-2xl transition group-hover:bg-brand group-hover:text-white">
-                    {getCategoryIcon(cat.name)}
-                  </span>
-                )}
-                <div>
-                  <div className="text-sm font-semibold group-hover:text-brand">{cat.name}</div>
-                  <div className="mt-0.5 text-xs text-muted">{cat._count?.courses ?? 0} courses</div>
-                </div>
-              </Link>
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* Featured courses */}
-      <section className="bg-surface py-16">
-        <div className="container-page">
-          <div className="flex items-end justify-between">
-            <div>
-              <span className="badge">Catalog</span>
-              <h2 className="mt-3 text-3xl font-extrabold tracking-tight">Popular courses</h2>
-            </div>
-            <Link href="/courses" className="text-sm font-semibold text-brand hover:underline">View all →</Link>
-          </div>
-          {loading ? (
-            <div className="mt-8 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
-              {Array.from({ length: 4 }).map((_, i) => (
-                <div key={i} className="card aspect-[3/4] animate-pulse bg-line/40" />
-              ))}
-            </div>
-          ) : courses.length === 0 ? (
-            <div className="mt-8 rounded-2xl border border-dashed border-line py-20 text-center text-muted">
-              No published courses yet. Check back soon!
-            </div>
-          ) : (
-            <div className="mt-8 grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
-              {courses.map((c) => (
-                <CourseCard key={c.id} course={c} featured />
-              ))}
-            </div>
-          )}
-        </div>
-      </section>
-
-      {/* How it works */}
-      <section className="container-page py-16">
-        <div className="text-center">
-          <span className="badge">Simple process</span>
-          <h2 className="mt-3 text-3xl font-extrabold tracking-tight">How it works</h2>
-          <p className="mx-auto mt-3 max-w-lg text-muted">Get started in minutes. No prior experience needed.</p>
-        </div>
-        <div className="mt-12 grid gap-8 sm:grid-cols-3">
-          {HOW_IT_WORKS.map((step) => (
-            <div key={step.step} className="flex flex-col items-center text-center">
-              <div className="relative">
-                <div className="grid h-20 w-20 place-items-center rounded-3xl bg-brand-soft text-brand">
-                  {step.icon}
-                </div>
-                <span className="absolute -right-2 -top-2 grid h-7 w-7 place-items-center rounded-full bg-brand text-xs font-black text-white">
-                  {step.step}
-                </span>
+              <div className="h-10 w-px bg-line" />
+              <div>
+                <div className="text-2xl font-extrabold text-ink">1.2k+</div>
+                <div className="mt-0.5 text-[13px] text-muted">Expert Tutors</div>
               </div>
-              <h3 className="mt-5 text-lg font-bold">{step.title}</h3>
-              <p className="mt-2 text-sm leading-relaxed text-muted">{step.desc}</p>
+              <div className="h-10 w-px bg-line" />
+              <div>
+                <div className="text-2xl font-extrabold text-ink">4.8/5</div>
+                <div className="mt-0.5 text-[13px] text-muted">User Rating</div>
+              </div>
             </div>
-          ))}
-        </div>
-      </section>
+          </div>
 
-      {/* Features */}
-      {!!cms?.features?.length && (
-        <section className="bg-brand py-16">
-          <div className="container-page">
-            <div className="text-center text-white">
-              <span className="inline-flex rounded-full border border-white/20 bg-white/10 px-4 py-1 text-xs font-semibold uppercase tracking-widest">
-                Why {brandName}
+          {/* Hero visual with floating cards */}
+          <div className="relative mx-auto w-full max-w-[520px]">
+            <div className="overflow-hidden rounded-[28px] shadow-lift">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={HERO_IMG} alt="Students learning together" className="aspect-[4/4.4] w-full object-cover sm:aspect-[4/3.6]" />
+            </div>
+            <div className="absolute -left-3 top-8 flex items-center gap-2.5 rounded-2xl border border-line bg-card px-4 py-3 shadow-lift sm:-left-8">
+              <span className="grid h-10 w-10 place-items-center rounded-xl bg-green-500/10 text-green-600">
+                <BadgeCheck className="h-5 w-5" />
               </span>
-              <h2 className="mt-4 text-3xl font-extrabold tracking-tight">
-                Everything you need to succeed
-              </h2>
+              <span>
+                <span className="block text-[11px] font-semibold uppercase tracking-wide text-muted">Certified</span>
+                <span className="block text-sm font-bold text-ink">Course Completion</span>
+              </span>
             </div>
-            <div className="mt-10 grid grid-cols-1 gap-6 sm:grid-cols-3">
-              {cms.features.map((f) => (
-                <div key={f.id} className="rounded-2xl border border-white/20 bg-white/10 p-7 text-white backdrop-blur-sm">
-                  {f.icon && (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={f.icon} alt="" className="h-12 w-12 object-contain" />
-                  )}
-                  <h3 className="mt-5 text-lg font-bold">{f.title}</h3>
-                  <p className="mt-2 text-sm text-white/70">{f.description}</p>
-                </div>
-              ))}
+            <div className="absolute -right-2 bottom-10 flex items-center gap-2.5 rounded-2xl border border-line bg-card px-4 py-3 shadow-lift sm:-right-6">
+              <span className="grid h-10 w-10 place-items-center rounded-xl bg-brand-soft text-brand">
+                <Play className="h-5 w-5 fill-current" />
+              </span>
+              <span>
+                <span className="block text-[11px] font-semibold uppercase tracking-wide text-muted">Live now</span>
+                <span className="block text-sm font-bold text-ink">UI Design Masterclass</span>
+              </span>
             </div>
           </div>
-        </section>
-      )}
+        </div>
+      </section>
 
-      {/* Testimonials */}
-      {!!cms?.testimonials?.length && (
-        <section className="bg-surface py-16">
+      {/* ── Live offers ─────────────────────────────────── */}
+      {offers.length > 0 && (
+        <section className="border-b border-line bg-card py-12 lg:py-14">
           <div className="container-page">
-            <div className="text-center">
-              <span className="badge">Reviews</span>
-              <h2 className="mt-3 text-3xl font-extrabold tracking-tight">What our students say</h2>
+            <div className="flex flex-wrap items-end justify-between gap-4">
+              <div className="max-w-2xl">
+                <span className="section-pill !border-rose-500/25 !bg-rose-500/10 !text-rose-600">
+                  <Megaphone className="mr-1.5 h-3.5 w-3.5" /> Limited time
+                </span>
+                <h2 className="mt-4 font-display text-3xl font-semibold tracking-tight text-ink">
+                  On sale right now
+                </h2>
+                <p className="mt-3 text-muted">
+                  These prices are already discounted — no code needed at checkout.
+                </p>
+              </div>
             </div>
-            <div className="mt-10 grid grid-cols-1 gap-6 sm:grid-cols-3">
-              {cms.testimonials.map((t) => (
-                <div key={t.id} className="card flex flex-col p-7">
-                  <Stars rating={t.rating ?? 5} />
-                  <p className="mt-4 flex-1 text-sm leading-relaxed text-muted">"{t.comment}"</p>
-                  <div className="mt-6 flex items-center gap-3 border-t border-line pt-5">
-                    {t.image ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={t.image} alt={t.name} className="h-10 w-10 rounded-full object-cover" />
-                    ) : (
-                      <span className="grid h-10 w-10 place-items-center rounded-full bg-brand-soft font-bold text-brand">
-                        {t.name[0]}
+
+            <div className="mt-8 grid gap-5 md:grid-cols-2">
+              {offers.map((offer) => (
+                <div
+                  key={offer.id}
+                  className="relative overflow-hidden rounded-2xl border border-line bg-surface p-6 shadow-sm"
+                >
+                  {offer.banner && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={offer.banner} alt="" className="absolute inset-0 h-full w-full object-cover opacity-15" />
+                  )}
+                  <div className="relative">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="inline-flex items-center gap-1 rounded-full bg-rose-500/10 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-rose-600">
+                        <Tag className="h-3 w-3" /> {offer.badge || offer.valueLabel}
                       </span>
-                    )}
-                    <div>
-                      <div className="text-sm font-semibold">{t.name}</div>
-                      {t.headline && <div className="text-xs text-muted">{t.headline}</div>}
+                      {offer.endsAt && (
+                        <span className="text-[11px] font-semibold uppercase tracking-wide text-muted">
+                          Ends {new Date(offer.endsAt).toLocaleDateString()}
+                        </span>
+                      )}
                     </div>
+                    <h3 className="mt-3 text-xl font-extrabold text-ink">{offer.title}</h3>
+                    {offer.subtitle && <p className="mt-1 text-sm text-muted">{offer.subtitle}</p>}
+
+                    {offer.courses.length > 0 && (
+                      <ul className="mt-4 space-y-2">
+                        {offer.courses.slice(0, 3).map((c) => (
+                          <li key={c.id}>
+                            <Link
+                              href={`/courses/${c.slug}`}
+                              className="flex items-center justify-between gap-3 rounded-xl bg-card px-4 py-2.5 text-sm transition hover:shadow-sm"
+                            >
+                              <span className="truncate font-semibold text-ink">{c.title}</span>
+                              <span className="shrink-0 text-xs font-bold text-rose-600">{offer.valueLabel}</span>
+                            </Link>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+
+                    <Link
+                      href="/courses"
+                      className="mt-4 inline-flex items-center gap-1.5 text-sm font-semibold text-brand hover:underline"
+                    >
+                      Shop the sale <ArrowRight className="h-4 w-4" />
+                    </Link>
                   </div>
                 </div>
               ))}
@@ -286,30 +214,208 @@ export default function HomePage() {
         </section>
       )}
 
-      {/* CTA */}
-      <section className="container-page py-16">
-        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-brand via-brand to-accent p-10 text-white sm:p-16">
-          {/* Decorative circles */}
-          <div className="pointer-events-none absolute -right-20 -top-20 h-72 w-72 rounded-full bg-white/10" aria-hidden />
-          <div className="pointer-events-none absolute -bottom-16 -left-16 h-56 w-56 rounded-full bg-white/5" aria-hidden />
+      {/* ── Logo strip ───────────────────────────────────── */}      <section className="border-y border-line bg-card py-7">
+        <div className="container-page flex flex-wrap items-center justify-center gap-x-12 gap-y-4">
+          {cms?.brands?.length ? (
+            cms.brands.slice(0, 6).map((b) => (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img key={b.id} src={b.image} alt="" className="h-6 w-auto object-contain opacity-50 grayscale" />
+            ))
+          ) : (
+            WORDMARKS.map((w) => (
+              <span key={w} className="font-display text-xl font-bold tracking-wide text-ink/30">{w}</span>
+            ))
+          )}
+        </div>
+      </section>
 
-          <div className="relative max-w-xl">
-            <h2 className="text-3xl font-extrabold sm:text-4xl">Start teaching on {brandName}</h2>
-            <p className="mt-3 text-lg text-white/80">
-              Share your expertise with learners worldwide. Earn revenue from every enrollment and build your audience.
-            </p>
-            <div className="mt-8 flex flex-wrap gap-3">
-              <Link href="/become-instructor" className="inline-flex items-center gap-2 rounded-full bg-white px-8 py-3.5 text-base font-semibold text-brand shadow-lg transition hover:bg-white/90">
-                Become an instructor
-                <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                  <path fillRule="evenodd" d="M3 10a.75.75 0 01.75-.75h10.638L10.23 5.29a.75.75 0 111.04-1.08l5.5 5.25a.75.75 0 010 1.08l-5.5 5.25a.75.75 0 11-1.04-1.08l4.158-3.96H3.75A.75.75 0 013 10z" clipRule="evenodd" />
-                </svg>
+      {/* ── Categories ───────────────────────────────────── */}
+      {topCategories.length > 0 && (
+        <section id="categories" className="container-page py-16 lg:py-20">
+          <div className="flex flex-wrap items-end justify-between gap-4">
+            <div className="max-w-2xl">
+              <span className="section-pill">Browse by category</span>
+              <h2 className="mt-4 font-display text-3xl font-semibold tracking-tight text-ink sm:text-4xl">
+                Top Skills to Master
+              </h2>
+              <p className="mt-3 text-muted">
+                Choose from a wide variety of subjects and start learning today. Each category contains
+                carefully curated content from world-class instructors.
+              </p>
+            </div>
+            <Link href="/courses" className="btn-ghost rounded-full text-sm">
+              View All Categories <ArrowRight className="h-4 w-4" />
+            </Link>
+          </div>
+
+          <div className="mt-10 grid grid-cols-2 gap-4 lg:grid-cols-4">
+            {topCategories.map((cat) => (
+              <Link
+                key={cat.id}
+                href={`/courses?category=${cat.slug}`}
+                className="group rounded-2xl border border-line bg-card p-8 text-center shadow-sm transition-all hover:-translate-y-1 hover:shadow-lift"
+              >
+                <span className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-surface text-ink transition group-hover:bg-brand group-hover:text-white">
+                  <CategoryIcon name={cat.name} className="h-6 w-6" />
+                </span>
+                <span className="mt-4 block text-[17px] font-bold text-ink group-hover:text-brand">{cat.name}</span>
+                <span className="mt-1 block text-[13px] text-muted">{cat._count?.courses ?? 0} courses</span>
               </Link>
-              <Link href="/courses" className="inline-flex items-center rounded-full border border-white/30 bg-white/10 px-8 py-3.5 text-base font-semibold text-white transition hover:bg-white/20">
-                Browse courses
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* ── Featured courses ─────────────────────────────── */}
+      <section className="bg-surface py-16 lg:py-20">
+        <div className="container-page">
+          <div className="flex flex-wrap items-end justify-between gap-4">
+            <div className="max-w-2xl">
+              <span className="section-pill !border-green-500/25 !bg-green-500/10 !text-green-600">Recommended for you</span>
+              <h2 className="mt-4 font-display text-3xl font-semibold tracking-tight text-ink sm:text-4xl">
+                Featured Professional Courses
+              </h2>
+              <p className="mt-3 text-muted">
+                Boost your career with our top-selling courses this month. Selected by our editorial team
+                for quality and market relevance.
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <Link href="/courses" aria-label="Previous" className="grid h-11 w-11 place-items-center rounded-full border border-line bg-card text-ink transition hover:border-brand hover:text-brand">
+                <ArrowRight className="h-4 w-4 rotate-180" />
+              </Link>
+              <Link href="/courses" aria-label="Next" className="grid h-11 w-11 place-items-center rounded-full border border-line bg-card text-ink transition hover:border-brand hover:text-brand">
+                <ArrowRight className="h-4 w-4" />
               </Link>
             </div>
           </div>
+
+          {loading ? (
+            <div className="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} className="aspect-[4/5] animate-pulse rounded-2xl bg-line/40" />
+              ))}
+            </div>
+          ) : featured.length === 0 ? (
+            <div className="mt-10 rounded-2xl border border-dashed border-line bg-card py-20 text-center text-muted">
+              No published courses yet. Check back soon!
+            </div>
+          ) : (
+            <div className="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+              {featured.map((c, i) => (
+                <CourseCard key={c.id} course={c} badge={i === 0 ? 'Bestseller' : i === 1 ? 'Highest Rated' : 'New'} />
+              ))}
+            </div>
+          )}
+
+          <div className="mt-12 text-center">
+            <Link href="/courses" className="btn-primary rounded-full px-10 py-3.5 text-[15px]">
+              Browse Discovery Feed
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      {/* ── Perks + adaptive learning ────────────────────── */}
+      <section className="container-page grid items-center gap-12 py-16 lg:grid-cols-2 lg:py-24">
+        <div className="grid grid-cols-2 gap-4">
+          {DEFAULT_PERKS.map((p, i) => (
+            <div key={p.title} className={`rounded-2xl p-6 ${i % 2 === 1 ? 'mt-8' : ''} ${i === 0 ? 'bg-blue-500/[0.06]' : i === 1 ? 'bg-green-500/[0.07]' : i === 2 ? 'bg-slate-500/[0.07]' : 'bg-rose-500/[0.06]'}`}>
+              <span className={`grid h-11 w-11 place-items-center rounded-xl ${p.tint}`}>
+                <p.icon className="h-5 w-5" />
+              </span>
+              <h3 className="mt-4 text-[15px] font-bold text-ink">{p.title}</h3>
+              <p className="mt-1.5 text-[13px] leading-relaxed text-muted">{p.desc}</p>
+            </div>
+          ))}
+        </div>
+        <div>
+          <h2 className="font-display text-3xl font-semibold leading-tight tracking-tight text-ink sm:text-[40px]">
+            Learning That Truly Adapts to Your Lifestyle
+          </h2>
+          <p className="mt-4 leading-relaxed text-muted">
+            Whether you're looking to jumpstart a new career, level up in your current role, or simply
+            explore a passion, our platform provides the tools and flexibility you need.
+          </p>
+          <ul className="mt-6 space-y-3.5">
+            {CHECKLIST.map((item) => (
+              <li key={item} className="flex items-start gap-3 text-[15px] font-medium text-ink">
+                <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-brand" />
+                {item}
+              </li>
+            ))}
+          </ul>
+          <Link href="/register" className="btn-primary mt-8 rounded-full px-8 py-3.5 text-[15px]">
+            Get Started for Free
+          </Link>
+        </div>
+      </section>
+
+      {/* ── Testimonials ─────────────────────────────────── */}
+      {testimonials.length > 0 && (
+        <section className="bg-surface py-16 lg:py-20">
+          <div className="container-page text-center">
+            <span className="section-pill">Voices of success</span>
+            <h2 className="mx-auto mt-4 max-w-xl font-display text-3xl font-semibold tracking-tight text-ink sm:text-4xl">
+              Loved by Thousands of Learners
+            </h2>
+            <p className="mx-auto mt-3 max-w-2xl text-muted">
+              Join a global community of over 1.5 million learners who are achieving their goals through
+              the {brandName} platform.
+            </p>
+            <div className="mt-10 grid gap-6 text-left sm:grid-cols-3">
+              {testimonials.map((t) => (
+                <div key={t.id} className="flex flex-col rounded-2xl border border-line bg-card p-7 shadow-sm">
+                  <div className="flex items-center gap-3">
+                    {t.image ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={t.image} alt={t.name} className="h-11 w-11 rounded-full object-cover" />
+                    ) : (
+                      <span className="grid h-11 w-11 place-items-center rounded-full bg-brand-soft font-bold text-brand">
+                        {t.name[0]}
+                      </span>
+                    )}
+                    <div>
+                      <div className="text-sm font-bold text-ink">{t.name}</div>
+                      {t.headline && <div className="text-xs text-muted">{t.headline}</div>}
+                    </div>
+                  </div>
+                  <p className="mt-4 flex-1 text-[15px] italic leading-relaxed text-ink/70">"{t.comment}"</p>
+                  <div className="mt-5 flex gap-0.5">
+                    {Array.from({ length: 5 }).map((_, i) => (
+                      <Star key={i} className={`h-4 w-4 ${i < (t.rating ?? 5) ? 'fill-green-500 text-green-500' : 'fill-line text-line'}`} />
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* ── CTA banner ───────────────────────────────────── */}
+      <section className="container-page py-16 lg:py-20">
+        <div className="relative overflow-hidden rounded-[28px] bg-brand px-6 py-14 text-center text-white sm:px-16 sm:py-16">
+          <div className="pointer-events-none absolute -left-24 -top-24 h-72 w-72 rounded-full bg-white/10" aria-hidden />
+          <div className="pointer-events-none absolute -bottom-28 -right-20 h-80 w-80 rounded-full bg-black/10" aria-hidden />
+          <h2 className="relative mx-auto max-w-2xl font-display text-4xl font-semibold leading-tight sm:text-5xl">
+            Ready to start your learning journey?
+          </h2>
+          <p className="relative mx-auto mt-4 max-w-2xl text-white/75">
+            Join {brandName} today and get 20% off your first professional certification course.
+            Offer valid for new students only.
+          </p>
+          <div className="relative mt-8 flex flex-wrap items-center justify-center gap-3">
+            <Link href="/register" className="rounded-full bg-green-500 px-8 py-3.5 text-[15px] font-bold text-white shadow-lg transition hover:brightness-110">
+              Create Free Account
+            </Link>
+            <Link href="/page/about" className="rounded-full border border-white/40 bg-white/10 px-8 py-3.5 text-[15px] font-bold text-white transition hover:bg-white/20">
+              Learn more about us
+            </Link>
+          </div>
+          <p className="relative mt-5 text-[13px] text-white/60">
+            No credit card required to get started. 30-day money-back guarantee on all courses.
+          </p>
         </div>
       </section>
     </>

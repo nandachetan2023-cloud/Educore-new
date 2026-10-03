@@ -1,10 +1,10 @@
-import { Body, Controller, Get, Inject, Injectable, Module, Put, Query } from '@nestjs/common';
+import { Body, Controller, Get, Inject, Injectable, Module, Param, ParseIntPipe, Put, Query } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { IsHexColor, IsOptional, IsString } from 'class-validator';
 import { ApiTags } from '@nestjs/swagger';
 import { PrismaClient } from '@prisma/client';
 import { RAW_PRISMA } from '../prisma/prisma.module';
-import { CurrentUser, Public, Roles } from '../common/decorators';
+import { CurrentUser, Public, Roles, SuperAdmin } from '../common/decorators';
 import { Principal } from '../common/enums';
 
 export interface Branding {
@@ -163,8 +163,36 @@ export class BrandingController {
   }
 }
 
+/**
+ * Lets the platform Superadmin view/edit any tenant admin's white-label
+ * branding on their behalf (from tenant detail / admin-user pages),
+ * mirroring SuperAdminDomainsController in domains.module.ts.
+ */
+@ApiTags('branding')
+@Controller('admin/tenants/:tenantId/branding')
+@Roles(Principal.ADMIN)
+@SuperAdmin()
+export class SuperAdminBrandingController {
+  constructor(private branding: BrandingService) {}
+
+  @Get()
+  get(@Param('tenantId', ParseIntPipe) tenantId: number) {
+    return this.branding.getForTenant(tenantId);
+  }
+
+  @Put()
+  update(@Param('tenantId', ParseIntPipe) tenantId: number, @Body() dto: BrandingDto) {
+    return this.branding.update(tenantId, dto);
+  }
+
+  @Put('reset')
+  reset(@Param('tenantId', ParseIntPipe) tenantId: number) {
+    return this.branding.reset(tenantId);
+  }
+}
+
 @Module({
   providers: [BrandingService],
-  controllers: [BrandingController],
+  controllers: [BrandingController, SuperAdminBrandingController],
 })
 export class BrandingModule {}

@@ -4,6 +4,7 @@ import {
   Delete,
   Get,
   Injectable,
+  Logger,
   Module,
   Param,
   ParseIntPipe,
@@ -13,6 +14,8 @@ import {
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { PrismaService } from '../prisma/prisma.service';
+import { CouponsModule, CouponsService } from '../coupons/coupons.module';
+import { round2 } from '../coupons/discount';
 import { Roles, CurrentUser } from '../common/decorators';
 import { Principal } from '../common/enums';
 
@@ -23,8 +26,18 @@ export function netPrice(course: { price: number | null; discount: number | null
 
 @Injectable()
 export class CartService {
-  constructor(private prisma: PrismaService) {}
+  private readonly logger = new Logger(CartService.name);
 
+  constructor(
+    private prisma: PrismaService,
+    private coupons: CouponsService,
+  ) {}
+
+  /**
+   * Cart contents plus whatever running offer already discounts them. The
+   * subtotal stays the pre-offer net price (the storefront shows it struck
+   * through) and `total` is what the buyer actually pays once the offer lands.
+   */
   async list(userId: number) {
     const items = await this.prisma.cart.findMany({
       where: { userId },
@@ -43,8 +56,35 @@ export class CartService {
       },
       orderBy: { createdAt: 'desc' },
     });
-    const subtotal = items.reduce((sum, i) => sum + netPrice(i.course), 0);
-    return { items, subtotal, count: items.length };
+    const subtotal = round2(items.reduce((sum, i) => sum + netPrice(i.course), 0));
+
+    let promo = null;
+    try {
+      promo = await this.coupons.priceCartForUser(userId);
+    } catch (e) {
+      this.logger.warn(`Offer pricing skipped for cart: ${(e as Error).message}`);
+    }
+
+    const byCourse = new Map(promo?.priced.lines.map((l) => [l.courseId, l]) ?? []);
+    const priced = items.map((i) => {
+      const line = byCourse.get(i.course.id);
+      return {
+        ...i,
+        course: {
+          ...i.course,
+          offerDiscount: line?.discount ?? 0,
+          payable: line ? line.final : round2(netPrice(i.course)),
+        },
+      };
+    });
+
+    return {
+      items: priced,
+      subtotal,
+      total: promo?.total ?? subtotal,
+      offer: promo?.offer ?? null,
+      count: items.length,
+    };
   }
 
   async add(userId: number, courseId: number) {
@@ -109,6 +149,7 @@ export class CartController {
 }
 
 @Module({
+  imports: [CouponsModule],
   providers: [CartService],
   controllers: [CartController],
   exports: [CartService],

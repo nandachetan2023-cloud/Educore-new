@@ -54,4 +54,21 @@ export default () => ({
     keyId: process.env.RAZORPAY_KEY_ID ?? '',
     keySecret: process.env.RAZORPAY_KEY_SECRET ?? '',
   },
+  // Social login (OAuth). Empty = provider disabled (frontend hides its
+  // button). Set these from your Google Cloud / GitHub OAuth app, then
+  // restart the API. Callback URLs to register in those apps:
+  //   {OAUTH_CALLBACK_BASE}/api/auth/oauth/google/callback
+  //   {OAUTH_CALLBACK_BASE}/api/auth/oauth/github/callback
+  oauth: {
+    callbackBase: process.env.OAUTH_CALLBACK_BASE ?? process.env.API_URL ?? 'http://localhost:4000',
+    webUrl: process.env.WEB_URL ?? 'http://localhost:3000',
+    google: {
+      clientId: process.env.GOOGLE_CLIENT_ID ?? '',
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET ?? '',
+    },
+    github: {
+      clientId: process.env.GITHUB_CLIENT_ID ?? '',
+      clientSecret: process.env.GITHUB_CLIENT_SECRET ?? '',
+    },
+  },
 });

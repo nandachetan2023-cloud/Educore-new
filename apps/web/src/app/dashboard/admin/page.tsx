@@ -5,11 +5,12 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   BadgeDollarSign, BookOpen, ChevronRight, CreditCard, FileText, LayoutDashboard,
-  ShoppingCart, Star, TrendingDown, TrendingUp, UserCog, Users, Wallet, Palette,
+  ShoppingCart, Star, BadgePercent, TrendingDown, TrendingUp, UserCog, Users, Wallet, Palette,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAuth, useBranding } from '@/lib/providers';
 import { LineChart } from '@/components/charts';
+import { DirectoryShell } from '@/components/directory-shell';
 
 interface Stats {
   students: number;
@@ -74,7 +75,7 @@ function timeAgo(iso: string): string {
 }
 
 export default function AdminConsole() {
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, logout } = useAuth();
   const branding = useBranding();
   const router = useRouter();
   const [tab, setTab] = useState<Tab>('overview');
@@ -124,55 +125,30 @@ export default function AdminConsole() {
   const maxCourseEnrollments = Math.max(1, ...(analytics?.topCourses.map((c) => c.enrollments) ?? [1]));
 
   return (
-    <div style={{ fontFamily: 'var(--font-admin-body)' }} className="min-h-[calc(100vh-68px)] bg-[#F6F4EF] text-[#16161A]">
-      <div className="lg:grid lg:grid-cols-[220px_1fr]">
-
-        {/* Sidebar */}
-        <aside className="hidden bg-[#101114] px-3 py-6 text-[#B7B9C2] lg:sticky lg:top-[68px] lg:block lg:h-[calc(100vh-68px)] lg:overflow-y-auto">
-          <div className="flex items-center gap-2.5 border-b border-white/[0.09] px-2 pb-5 mb-4">
-            <div className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-brand text-[13px] font-bold text-white" style={{ fontFamily: 'var(--font-admin-display)' }}>
-              {(branding?.name || 'E')[0]}
-            </div>
-            <p className="truncate text-[15px] font-semibold text-white" style={{ fontFamily: 'var(--font-admin-display)' }}>{branding?.name || 'Admin console'}</p>
-          </div>
-
-          <div className="mb-2 px-3 text-[10.5px] font-bold uppercase tracking-[.09em] text-[#5C5F6B]">Workspace</div>
-          <nav className="space-y-0.5">
-            {TABS.map((t) => (
-              <button
-                key={t.key}
-                onClick={() => setTab(t.key)}
-                className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-[13.5px] font-medium transition"
-                style={tab === t.key ? { background: 'rgb(var(--brand-primary) / 0.16)', boxShadow: 'inset 2px 0 0 rgb(var(--brand-primary))', color: '#ffffff' } : undefined}
-              >
-                <span style={tab === t.key ? { color: 'rgb(var(--brand-primary))' } : { color: '#8A8D98' }}>{t.icon}</span>
-                {t.label}
-              </button>
-            ))}
-          </nav>
-
-          <div className="mb-2 mt-6 px-3 text-[10.5px] font-bold uppercase tracking-[.09em] text-[#5C5F6B]">Platform</div>
-          <div className="space-y-0.5">
-            <SideLink href="/dashboard/admin/white-label" icon={<Palette size={17} />} label="White label" />
-            <SideLink href="/dashboard/admin/billing" icon={<CreditCard size={17} />} label="Billing" />
-            <SideLink href="/dashboard/admin/content" icon={<FileText size={17} />} label="Site content" />
-          </div>
-
-          <div className="mt-8 flex items-center gap-2.5 border-t border-white/[0.09] px-1 pt-4">
-            <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#24262E] text-[12.5px] font-semibold text-[#E7E7EA]">
-              {initials(user?.name ?? 'Admin')}
-            </div>
-            <div className="min-w-0">
-              <div className="truncate text-[13px] font-semibold text-[#E7E7EA]">{user?.name ?? 'Admin user'}</div>
-              <div className="text-[11.5px] text-[#7B7E89]">Tenant admin</div>
-            </div>
-          </div>
-        </aside>
-
-        {/* Main */}
-        <main className="min-w-0 px-4 py-7 sm:px-7 lg:px-10">
-          <div className="mx-auto max-w-[1220px]">
-
+    <DirectoryShell
+      eyebrow="Admin Console"
+      sections={[
+        {
+          heading: 'Workspace',
+            links: TABS.map((t) => ({ label: t.label, icon: t.icon, active: tab === t.key, onClick: () => setTab(t.key) })),
+        },
+        {
+          heading: 'Platform',
+          links: [
+            { href: '/dashboard/admin/coupons', label: 'Coupons & offers', icon: BadgePercent },
+            { href: '/dashboard/admin/white-label', label: 'White label', icon: Palette },
+            { href: '/dashboard/admin/billing', label: 'Billing', icon: CreditCard },
+            { href: '/dashboard/admin/content', label: 'Site content', icon: FileText },
+          ],
+        },
+      ]}
+      userName={user?.name ?? 'Admin'}
+      userCaption="Tenant admin"
+      userImage={user?.image}
+      onLogout={logout}
+    >
+      <div style={{ fontFamily: 'var(--font-admin-body)' }}>
+        <div className="mx-auto max-w-[1220px]">
             {/* Mobile nav (sidebar is desktop-only) */}
             <div className="mb-6 flex flex-wrap gap-2 lg:hidden">
               {TABS.map((t) => (
@@ -186,6 +162,7 @@ export default function AdminConsole() {
               ))}
               <Link href="/dashboard/admin/white-label" className="btn-ghost px-3 py-2 text-sm">White label</Link>
               <Link href="/dashboard/admin/billing" className="btn-ghost px-3 py-2 text-sm">Billing</Link>
+              <Link href="/dashboard/admin/coupons" className="btn-ghost px-3 py-2 text-sm">Coupons</Link>
             </div>
 
             <header className="mb-7 flex flex-wrap items-center justify-between gap-4">
@@ -370,18 +347,8 @@ export default function AdminConsole() {
             )}
 
           </div>
-        </main>
       </div>
-    </div>
-  );
-}
-
-function SideLink({ href, icon, label }: { href: string; icon: React.ReactNode; label: string }) {
-  return (
-    <Link href={href} className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-[13.5px] font-medium text-[#B7B9C2] transition hover:bg-white/10 hover:text-white">
-      <span className="text-[#8A8D98]">{icon}</span>
-      {label}
-    </Link>
+    </DirectoryShell>
   );
 }
 

@@ -71,8 +71,20 @@ export interface PlanRow {
 
 export type TenantStatus = 'pending_setup' | 'active' | 'past_due' | 'suspended';
 
-export interface TenantRow {
-  id: number;
+export interface PlatformStats {
+  tenants: { total: number; active: number; pendingSetup: number; pastDue: number; suspended: number };
+  mrr: number;
+  revenueByPlan: { name: string; workspaces: number }[];
+  learners: number;
+  instructors: number;
+  staff: number;
+  courses: number;
+  enrollments: number;
+  orders: number;
+  gmv: number;
+}
+
+export interface TenantRow {  id: number;
   name: string;
   slug: string;
   status: TenantStatus;
@@ -131,6 +143,104 @@ export interface HomeCms {
   testimonials: Testimonial[];
   counters: Counter[];
   brands: Brand[];
+}
+
+export type DiscountType = 'percentage' | 'fixed';
+export type DiscountTarget = 'all' | 'courses' | 'categories';
+
+/** Admin-managed discount code students redeem at checkout. */
+export interface Coupon {
+  id: number;
+  code: string;
+  description?: string | null;
+  type: DiscountType;
+  value: number;
+  minOrderAmount?: number | null;
+  maxDiscount?: number | null;
+  target: DiscountTarget;
+  courseIds: number[];
+  categoryIds: number[];
+  usageLimit?: number | null;
+  perUserLimit: number;
+  usedCount: number;
+  startsAt?: string | null;
+  endsAt?: string | null;
+  status: boolean;
+  createdAt: string;
+  updatedAt: string;
+  _count?: { redemptions: number };
+  redemptions?: { id: number; amount: number; createdAt: string }[];
+}
+
+/** Time-boxed sale applied automatically to selected courses/categories. */
+export interface Offer {
+  id: number;
+  title: string;
+  slug: string;
+  subtitle?: string | null;
+  description?: string | null;
+  banner?: string | null;
+  badge?: string | null;
+  type: DiscountType;
+  value: number;
+  maxDiscount?: number | null;
+  target: DiscountTarget;
+  courseIds: number[];
+  categoryIds: number[];
+  priority: number;
+  usedCount: number;
+  startsAt?: string | null;
+  endsAt?: string | null;
+  status: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Storefront shape: an offer plus the courses it currently discounts. */
+export interface StorefrontOffer extends Offer {
+  valueLabel: string;
+  courseCount: number;
+  courses: { id: number; title: string; slug: string; thumbnail?: string | null; price?: number | null; discount?: number | null }[];
+}
+
+/** The promotion the server actually honored on a cart or order. */
+export interface AppliedPromo {
+  kind: 'coupon' | 'offer';
+  id?: number | null;
+  code?: string | null;
+  title: string;
+  type: DiscountType;
+  value: number;
+  valueLabel: string;
+  maxDiscount?: number | null;
+  label: string;
+  target: DiscountTarget;
+}
+
+export interface CouponPreview {
+  valid: true;
+  code: string;
+  title: string;
+  kind: 'coupon' | 'offer';
+  value: number;
+  valueLabel: string;
+  label: string;
+  subtotal: number;
+  discount: number;
+  total: number;
+}
+
+export interface CouponSummary {
+  activeCoupons: number;
+  activeOffers: number;
+  redemptions: number;
+  revenueSaved: number;
+  averageSaving: number;
+}
+
+/** "10% off" / "$5 off" — the wording used on both the console and the storefront. */
+export function discountLabel(type: DiscountType, value: number): string {
+  return type === 'percentage' ? `${value}% off` : `${value} off`;
 }
 
 export function priceLabel(course: { price?: number | null; discount?: number | null }, currency: string) {

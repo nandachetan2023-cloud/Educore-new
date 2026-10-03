@@ -1,6 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import * as argon2 from 'argon2';
 import slugify from 'slugify';
+import { BLOG_POSTS, CUSTOM_PAGES } from './content-pages';
 
 // Seeding is inherently cross-tenant (it's what CREATES tenants), so this
 // uses a plain, unscoped PrismaClient directly — the same thing RAW_PRISMA
@@ -287,13 +288,7 @@ async function main() {
 
   console.log('› Acme blog…');
   const acmeBlogCat = await prisma.blogCategory.create({ data: { tenantId: acmeId, name: 'Learning Tips', slug: 'learning-tips', status: true } });
-  const posts = [
-    { title: '10 Habits of Highly Effective Online Learners', image: 'blog_2_img_1.jpg', short: 'Small routines that make a big difference in how much you retain.' },
-    { title: 'How to Choose Your First Programming Language', image: 'blog_2_img_2.jpg', short: 'A practical guide to picking a language that matches your goals.' },
-    { title: 'The Designer’s Guide to Building a Portfolio', image: 'blog_2_img_3.jpg', short: 'Show your process, not just polished screens.' },
-    { title: 'Breaking Into Data Science in 2026', image: 'blog_2_img_4.jpg', short: 'The skills, tools, and roadmap that actually matter today.' },
-  ];
-  for (const p of posts) {
+  for (const p of BLOG_POSTS) {
     await prisma.blog.create({
       data: {
         tenantId: acmeId,
@@ -302,7 +297,7 @@ async function main() {
         slug: slug(p.title),
         image: img(p.image),
         shortDescription: p.short,
-        description: `<p>${p.short}</p><p>This is demo content seeded for the EduCore platform. Replace it with your own articles from the admin panel.</p>`,
+        description: p.body,
         seoDescription: p.short,
         status: true,
       },
@@ -310,12 +305,7 @@ async function main() {
   }
 
   console.log('› Acme custom pages…');
-  const acmeCustomPages = [
-    { title: 'About', slug: 'about', content: '<p>We are on a mission to make high-quality education accessible to everyone, everywhere. Built by instructors, for learners.</p><p>This page is editable from Admin → Settings → Page builder.</p>' },
-    { title: 'Terms', slug: 'terms', content: '<p>These are placeholder Terms of Service. Replace this content from Admin → Settings → Page builder before going live.</p>' },
-    { title: 'Privacy', slug: 'privacy', content: '<p>This is a placeholder Privacy Policy. Replace this content from Admin → Settings → Page builder before going live.</p>' },
-  ];
-  for (const p of acmeCustomPages) await prisma.customPage.create({ data: { tenantId: acmeId, ...p } });
+  for (const p of CUSTOM_PAGES) await prisma.customPage.create({ data: { tenantId: acmeId, ...p } });
 
   // ───────────────────────────────────────────────────────────
   //  Tenant 2: Nova Learning — a small, separate tenant, specifically to

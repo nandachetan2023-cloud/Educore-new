@@ -25,6 +25,10 @@ export default function AdminSettingsPage() {
       <p className="mt-1 text-muted">Site-wide configuration and maintenance tools.</p>
 
       <div className="mt-8 grid gap-3 sm:grid-cols-3">
+        <Link href="/dashboard/admin/settings/payment" className="card p-5 transition hover:border-brand/40">
+          <div className="font-semibold">Payment configuration</div>
+          <div className="mt-1 text-sm text-muted">Set Razorpay keys without redeploying.</div>
+        </Link>
         <Link href="/dashboard/admin/settings/mail" className="card p-5 transition hover:border-brand/40">
           <div className="font-semibold">Mail configuration</div>
           <div className="mt-1 text-sm text-muted">Configure SMTP without redeploying.</div>
