@@ -34,6 +34,7 @@ import { UploadsModule } from './uploads/uploads.module';
 import { MailModule } from './mail/mail.module';
 import { PaymentsModule } from './payments/payments.module';
 import { BrandingModule } from './branding/branding.module';
+import { AnnouncementModule } from './announcement/announcement.module';
 import { AdminsModule } from './admins/admins.module';
 import { HealthModule } from './health/health.module';
 import { PagesModule } from './pages/pages.module';
@@ -91,6 +92,7 @@ import { DomainsModule } from './domains/domains.module';
     MailModule,
     PaymentsModule,
     BrandingModule,
+    AnnouncementModule,
     AdminsModule,
     HealthModule,
     PagesModule,

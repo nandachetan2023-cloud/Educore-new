@@ -3,7 +3,7 @@ import type { Metadata } from 'next';
 import { Inter, Source_Serif_4 } from 'next/font/google';
 import { cookies, headers } from 'next/headers';
 import { Providers } from '@/lib/providers';
-import { Chrome } from '@/components/chrome';
+import { Chrome, type Announcement } from '@/components/chrome';
 import type { Branding } from '@/lib/types';
 
 const DEV_TENANT_COOKIE = 'educore.devTenant';
@@ -77,6 +77,38 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
+/**
+ * Promotional strip copy, resolved per host the same way as branding (the
+ * query string carries the tenant because Next's fetch cache keys on the URL,
+ * not headers). Fails soft to "no banner" so a CMS hiccup can never take the
+ * storefront down.
+ */
+async function getAnnouncement(): Promise<Announcement> {
+  const fallback: Announcement = {
+    enabled: false,
+    message: '',
+    linkText: '',
+    linkUrl: '',
+    tone: 'brand',
+  };
+  try {
+    const base = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000/api';
+    const devTenant = cookies().get(DEV_TENANT_COOKIE)?.value;
+    const host = headers().get('host')?.split(':')[0];
+    const params = new URLSearchParams();
+    if (devTenant) params.set('devTenant', devTenant);
+    else if (host) params.set('host', host);
+    const qs = params.toString();
+    const res = await fetch(`${base}/announcement${qs ? `?${qs}` : ''}`, {
+      next: { revalidate: 60 },
+    });
+    if (!res.ok) return fallback;
+    return { ...fallback, ...(await res.json()) };
+  } catch {
+    return fallback;
+  }
+}
+
 function hexToRgb(hex: string): string {
   const h = hex.replace('#', '');
   const full = h.length === 3 ? h.split('').map((c) => c + c).join('') : h;
@@ -86,6 +118,7 @@ function hexToRgb(hex: string): string {
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const branding = await getBranding();
+  const announcement = await getAnnouncement();
   const primaryRgb = hexToRgb(branding.primaryColor);
   const secondaryRgb = hexToRgb(branding.secondaryColor);
   return (
@@ -96,7 +129,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
     >
       <body>
         <Providers branding={branding}>
-          <Chrome>{children}</Chrome>
+          <Chrome announcement={announcement}>{children}</Chrome>
         </Providers>
       </body>
     </html>

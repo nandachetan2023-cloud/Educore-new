@@ -6,12 +6,12 @@ import { useRouter } from 'next/navigation';
 import { api, ApiError } from '@/lib/api';
 import { useAuth } from '@/lib/providers';
 
-type Tab = 'home' | 'blog' | 'contact';
+type Tab = 'announcement' | 'home' | 'blog' | 'contact';
 
 export default function AdminContentPage() {
   const { user, loading: authLoading } = useAuth();
   const router = useRouter();
-  const [tab, setTab] = useState<Tab>('home');
+  const [tab, setTab] = useState<Tab>('announcement');
 
   useEffect(() => {
     if (authLoading) return;
@@ -21,6 +21,7 @@ export default function AdminContentPage() {
   if (authLoading) return <div className="container-page py-20 text-center text-muted">Loading…</div>;
 
   const TABS: { key: Tab; label: string }[] = [
+    { key: 'announcement', label: 'Announcement' },
     { key: 'home', label: 'Homepage' },
     { key: 'blog', label: 'Blog' },
     { key: 'contact', label: 'Contact Us' },
@@ -30,7 +31,9 @@ export default function AdminContentPage() {
     <div className="container-page max-w-4xl py-10">
       <Link href="/dashboard/admin" className="text-sm text-muted hover:text-brand">← Admin console</Link>
       <h1 className="mt-3 text-3xl font-extrabold">Site content</h1>
-      <p className="mt-1 text-muted">Edit the homepage, publish blog posts, and manage the contact page.</p>
+      <p className="mt-1 text-muted">
+        Edit the homepage, run site-wide announcements, publish blog posts, and manage the contact page.
+      </p>
 
       <div className="mt-6 flex gap-1 border-b border-line">
         {TABS.map((t) => (
@@ -49,9 +52,173 @@ export default function AdminContentPage() {
       </div>
 
       <div className="mt-8">
+        {tab === 'announcement' && <AnnouncementEditor />}
         {tab === 'home' && <HomeEditor />}
         {tab === 'blog' && <BlogEditor />}
         {tab === 'contact' && <ContactEditor />}
+      </div>
+    </div>
+  );
+}
+
+/* ─── Announcement editor ─────────────────────────────────────────────────── */
+const ANNOUNCEMENT_TONES = [
+  { value: 'brand', label: 'Brand (uses your primary colour)' },
+  { value: 'info', label: 'Blue' },
+  { value: 'success', label: 'Green' },
+  { value: 'warning', label: 'Amber' },
+] as const;
+
+type AnnouncementForm = {
+  enabled: boolean;
+  message: string;
+  linkText: string;
+  linkUrl: string;
+  tone: string;
+};
+
+function AnnouncementEditor() {
+  const [form, setForm] = useState<AnnouncementForm>({
+    enabled: false,
+    message: '',
+    linkText: '',
+    linkUrl: '',
+    tone: 'brand',
+  });
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    api<AnnouncementForm>('/admin/announcement')
+      .then((a) => setForm({ ...form, ...a }))
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  }, []);
+
+  const save = async () => {
+    setBusy(true); setMsg(null); setErr(null);
+    try {
+      await api('/admin/announcement', { method: 'PUT', body: JSON.stringify(form) });
+      setMsg('Announcement saved. It appears on every public page within a minute.');
+      setTimeout(() => setMsg(null), 4000);
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : 'Failed to save.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (loading) return <div className="py-10 text-center text-sm text-muted">Loading…</div>;
+
+  return (
+    <div className="space-y-6">
+      {msg && <p className="rounded-xl bg-green-50 px-4 py-2.5 text-sm font-medium text-green-700">{msg}</p>}
+      {err && <p className="rounded-xl bg-red-50 px-4 py-2.5 text-sm text-red-600">{err}</p>}
+
+      <section className="card p-6">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <h2 className="font-bold">Promotional banner</h2>
+            <p className="mt-0.5 text-sm text-muted">
+              A dismissible strip above the header on every public page — ideal for a sale or a launch.
+            </p>
+          </div>
+          <label className="flex shrink-0 cursor-pointer items-center gap-2">
+            <span className="text-sm font-medium text-muted">{form.enabled ? 'On' : 'Off'}</span>
+            <input
+              type="checkbox"
+              className="h-5 w-5 accent-[rgb(var(--brand-primary))]"
+              checked={form.enabled}
+              onChange={(e) => setForm((f) => ({ ...f, enabled: e.target.checked }))}
+            />
+          </label>
+        </div>
+
+        <div className="mt-5 space-y-3">
+          <div>
+            <label className="label">Message</label>
+            <input
+              className="input"
+              maxLength={200}
+              placeholder="Flash sale — up to 50% off selected courses, ends Sunday."
+              value={form.message}
+              onChange={(e) => setForm((f) => ({ ...f, message: e.target.value }))}
+            />
+            <p className="mt-1 text-xs text-muted">{form.message.length}/200</p>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <label className="label">Link text (optional)</label>
+              <input
+                className="input"
+                maxLength={60}
+                placeholder="Browse the sale"
+                value={form.linkText}
+                onChange={(e) => setForm((f) => ({ ...f, linkText: e.target.value }))}
+              />
+            </div>
+            <div>
+              <label className="label">Link URL (optional)</label>
+              <input
+                className="input"
+                maxLength={300}
+                placeholder="/courses"
+                value={form.linkUrl}
+                onChange={(e) => setForm((f) => ({ ...f, linkUrl: e.target.value }))}
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="label">Colour</label>
+            <select
+              className="input"
+              value={form.tone}
+              onChange={(e) => setForm((f) => ({ ...f, tone: e.target.value }))}
+            >
+              {ANNOUNCEMENT_TONES.map((t) => (
+                <option key={t.value} value={t.value}>
+                  {t.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {form.enabled && form.message && (
+          <div className="mt-6">
+            <span className="label">Preview</span>
+            <div
+              className={`relative rounded-lg px-4 py-3 pr-9 text-center text-sm ${
+                {
+                  brand: 'bg-brand text-white',
+                  info: 'bg-sky-600 text-white',
+                  success: 'bg-emerald-600 text-white',
+                  warning: 'bg-amber-500 text-white',
+                }[form.tone] ?? 'bg-brand text-white'
+              }`}
+            >
+              <span className="font-medium">{form.message}</span>
+              {form.linkText && form.linkUrl && (
+                <span className="ml-2 font-semibold underline underline-offset-4">
+                  {form.linkText}
+                </span>
+              )}
+            </div>
+          </div>
+        )}
+      </section>
+
+      <div className="flex items-center gap-3">
+        <button onClick={save} disabled={busy} className="btn-primary px-6">
+          {busy ? 'Saving…' : 'Save announcement'}
+        </button>
+        <a href="/" target="_blank" rel="noreferrer" className="btn-ghost text-sm">
+          Preview site →
+        </a>
       </div>
     </div>
   );
