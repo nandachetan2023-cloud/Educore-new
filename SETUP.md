@@ -52,17 +52,21 @@ They can also be configured later from the Admin panel.
 
 ## 3. Configure environment — Web
 
-Create `apps\web\.env.local`:
+Usually **nothing is needed**. The browser calls same-origin `/api` and Next
+rewrites it to the API host — so the browser never embeds a URL, and deploys
+on any host work with no CORS setup.
 
-```
-copy NUL apps\web\.env.local
-```
-
-Add this single line (matches the default API port):
+If you must point at a separate API server (different domain), create
+`apps\web\.env.local` — but note this value is baked into the browser bundle:
 
 ```env
-NEXT_PUBLIC_API_URL=http://localhost:4000/api
+NEXT_PUBLIC_API_URL=https://api.your-domain.com/api
 ```
+
+> Never set `NEXT_PUBLIC_API_URL=http://localhost:4000` in a deployment —
+> every visitor's browser would try to reach the API on *their own* machine
+> (the "deployed login only works on the server" failure). For the server-side
+> API origin alone, use `API_URL=http://localhost:4000`.
 
 ---
 
@@ -158,13 +162,14 @@ From the admin console you can:
 ## Troubleshooting
 
 **Port already in use**  
-Change `API_PORT` in `apps\api\.env` and update `NEXT_PUBLIC_API_URL` in `apps\web\.env.local` to match.
+Change `API_PORT` in `apps\api\.env` and `API_URL` in `apps\web\.env.local` to match.
 
 **Database connection error**  
 Verify PostgreSQL is running and `DATABASE_URL` in `.env` is correct.
 
 **API starts but web shows errors**  
-Make sure `NEXT_PUBLIC_API_URL` in `apps\web\.env.local` points to the correct API address and the API is running.
+Make sure the API is running; the web app reaches it same-origin via `/api`
+(see `API_URL` in `apps\web\.env.local` if you changed the API port).
 
 **`dist/src/main.js` not found**  
 Run `npm run build` from `apps\api` before running `npm run start`.

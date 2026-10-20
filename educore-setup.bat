@@ -94,12 +94,17 @@ if not exist "%ROOT%\.env" (
 echo.
 
 :: ──────────────────────────────────────────────
-:: STEP 3 - Web .env.local (API URL for the frontend)
+:: STEP 3 - Web .env.local (server-side API origin)
+:: NOTE: NEXT_PUBLIC_API_URL must NOT be set here. It is baked into the
+:: browser bundle at build time - setting it to localhost:4000 breaks the
+:: site for every machine except the server (the deployed-login bug).
+:: Instead the browser calls same-origin /api (next.config.mjs rewrites it
+:: to API_URL), so only the server-side API_URL is configured here.
 :: ──────────────────────────────────────────────
 echo [3/10] Checking Web environment file...
 if not exist "%WEB%\.env.local" (
   echo  Creating apps\web\.env.local...
-  echo NEXT_PUBLIC_API_URL=http://localhost:4000/api> "%WEB%\.env.local"
+  echo API_URL=http://localhost:4000> "%WEB%\.env.local"
   echo  Created.
 ) else (
   echo  Web .env.local exists - skipping.

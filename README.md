@@ -132,7 +132,7 @@ Pages: home (hero + categories + featured + live offers strip), course catalog (
 
 ```bash
 cd apps/web
-npm run dev   # http://localhost:3000  (point NEXT_PUBLIC_API_URL at the API)
+npm run dev   # http://localhost:3000  (defaults to same-origin /api → API_URL)
 ```
 
 ## White-label model

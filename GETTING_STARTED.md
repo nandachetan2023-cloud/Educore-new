@@ -268,7 +268,7 @@ npm install --workspaces
 3. **Mail**: Configure SMTP for functional email notifications
 4. **Storage**: Start with local driver; migrate to S3 for large scale
 5. **Rebranding**: Admin users can customize branding without redeploy
-6. **Frontend**: Web app points to API via `NEXT_PUBLIC_API_URL` environment variable
+6. **Frontend**: Web app reaches the API same-origin via `/api` (configurable with `NEXT_PUBLIC_API_URL` only for a separate API domain)
 
 ## 🤝 Support & Contribution
 
