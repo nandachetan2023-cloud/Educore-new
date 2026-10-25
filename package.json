@@ -10,9 +10,9 @@
   "scripts": {
     "dev": "concurrently \"npm:dev:api\" \"npm:dev:web\"",
     "start": "concurrently \"npm:start:api\" \"npm:start:web\"",
-    "dev:api": "npm --prefix apps/api run start:dev",
+    "dev:api": "node scripts/run-nest.cjs start:dev",
     "dev:web": "node scripts/run-next.cjs dev -p 3004",
-    "start:api": "npm --prefix apps/api run start",
+    "start:api": "node scripts/run-nest.cjs start",
     "start:web": "node scripts/run-next.cjs start -p 3004",
     "build": "npm run build --workspace=@educore/api && npm run build --workspace=@educore/web",
     "db:generate": "npm run prisma:generate --workspace=@educore/api",
