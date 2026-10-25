@@ -37,7 +37,7 @@ if errorlevel 1 (
   exit /b 1
 )
 for /f "tokens=*" %%v in ('node -v') do set NODE_VER=%%v
-for /f "tokens=2 delims=v." %%M in ("%NODE_VER%") do set NODE_MAJOR=%%M
+for /f "tokens=1 delims=v." %%M in ("%NODE_VER%") do set NODE_MAJOR=%%M
 if %NODE_MAJOR% LSS 20 (
   echo  ERROR: Node.js %NODE_VER% found - v20 or higher is required.
   pause
