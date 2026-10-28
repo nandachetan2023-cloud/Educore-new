@@ -33,6 +33,10 @@ const child = spawn(process.execPath, [nestBin, ...nestArgs], {
   cwd: apiDir,
   stdio: 'inherit',
   windowsHide: false,
+  // Pre-set the npm registry so any internal `npm config get registry`
+  // call succeeds without spawning npm from inside the workspace (which
+  // npm rejects with ENOWORKSPACES).
+  env: { ...process.env, NPM_CONFIG_REGISTRY: process.env.NPM_CONFIG_REGISTRY || 'https://registry.npmjs.org/' },
 });
 child.on('exit', (code, signal) => {
   if (signal) process.kill(process.pid, signal);

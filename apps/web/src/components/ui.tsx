@@ -13,15 +13,22 @@ export const Icons = {
   Search, ShieldCheck, ShoppingCart, Sprout, Star, TrendingUp, Users,
 };
 
-/** White-label graduation-cap logo tile (reference header/footer brand mark). */
+/** White-label brand mark — icon-only square (wordmark lives in BrandName next to it). */
 export function BrandMark({ size = 'md' }: { size?: 'sm' | 'md' | 'lg' }) {
   const branding = useBranding();
-  const dims = size === 'lg' ? 'h-11 w-11' : size === 'sm' ? 'h-8 w-8' : 'h-9 w-9';
-  if (branding?.logo && !branding.logo.endsWith('.svg')) {
-    return <img src={branding.logo} alt={branding.name} className="h-8 w-auto max-w-[140px] object-contain" />;
+  const dims = size === 'lg' ? 'h-11 w-11' : size === 'sm' ? 'h-7 w-7' : 'h-8 w-8';
+  if (branding?.logo) {
+    return (
+      <img
+        src={branding.logo}
+        alt=""
+        aria-hidden
+        className={`${dims} shrink-0 rounded-xl object-contain`}
+      />
+    );
   }
   return (
-    <span className={`grid ${dims} shrink-0 place-items-center rounded-full bg-brand text-white`}>
+    <span className={`grid ${dims} shrink-0 place-items-center rounded-xl bg-brand text-white`}>
       <GraduationCap className={size === 'lg' ? 'h-6 w-6' : 'h-5 w-5'} />
     </span>
   );

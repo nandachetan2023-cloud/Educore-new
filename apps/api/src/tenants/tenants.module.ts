@@ -21,6 +21,7 @@ import { RAW_PRISMA } from '../prisma/prisma.module';
 import { Roles, SuperAdmin } from '../common/decorators';
 import { Principal } from '../common/enums';
 import { TenantStatusCache } from '../common/tenant-status-cache.service';
+import { AuditService } from '../audit/audit.service';
 
 const slug = (t: string) => slugify(t, { lower: true, strict: true });
 
@@ -48,6 +49,7 @@ export class TenantsService {
   constructor(
     @Inject(RAW_PRISMA) private raw: PrismaClient,
     private tenantStatusCache: TenantStatusCache,
+    private audit: AuditService,
   ) {}
 
   list() {
@@ -97,6 +99,7 @@ export class TenantsService {
       include: TENANT_INCLUDE,
     });
     this.tenantStatusCache.invalidate(id);
+    await this.audit.log({ action: 'tenant.suspend', entity: 'tenant', entityId: id, meta: { name: tenant.name } });
     return tenant;
   }
 
@@ -108,6 +111,7 @@ export class TenantsService {
       include: TENANT_INCLUDE,
     });
     this.tenantStatusCache.invalidate(id);
+    await this.audit.log({ action: 'tenant.reactivate', entity: 'tenant', entityId: id, meta: { name: tenant.name } });
     return tenant;
   }
 

@@ -7,6 +7,7 @@ import {
   AlertTriangle,
   ArrowRight,
   BadgeDollarSign,
+  BadgePercent,
   BookOpen,
   Building2,
   CheckCircle2,
@@ -16,6 +17,7 @@ import {
   Palette,
   Plus,
   Search,
+  TrendingUp,
   Users,
   Wallet,
 } from 'lucide-react';
@@ -365,6 +367,9 @@ export default function SuperadminOverview() {
         {[
           { href: '/dashboard/superadmin/tenants', icon: Building2, title: 'Sub-accounts', body: 'Create, suspend, brand, and domain-manage workspaces.' },
           { href: '/dashboard/superadmin/plans', icon: CreditCard, title: 'Plans & billing', body: 'Price the subscriptions workspaces pay you.' },
+          { href: '/dashboard/superadmin/revenue', icon: TrendingUp, title: 'Revenue', body: 'MRR, payouts, orders, and platform-level figures.' },
+          { href: '/dashboard/superadmin/white-label', icon: Palette, title: 'White label', body: 'Brand identity, custom domain, and platform-level defaults.' },
+          { href: '/dashboard/superadmin/coupons', icon: BadgePercent, title: 'Coupons & offers', body: 'Platform-wide promotions and discount controls.' },
           { href: '/dashboard/admin/admins', icon: Users, title: 'Platform staff', body: 'Admins, roles, and workspace assignments.' },
           { href: '/dashboard/admin/settings/payment', icon: Wallet, title: 'Payment gateways', body: 'Razorpay keys for course checkout, without a redeploy.' },
         ].map((q) => (

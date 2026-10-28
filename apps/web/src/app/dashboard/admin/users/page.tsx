@@ -7,7 +7,6 @@ import {
   CheckCircle2,
   Copy,
   Download,
-  Globe,
   GraduationCap,
   LayoutDashboard,
   Palette,
@@ -127,6 +126,8 @@ export default function UserDirectoryPage() {
   const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [inspector, setInspector] = useState<DirectoryUser | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [editForm, setEditForm] = useState({ name: '', email: '', role: 'student' as 'student' | 'instructor', approveStatus: 'approved' as 'pending' | 'approved' | 'rejected', headline: '', bio: '' });
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteForm, setInviteForm] = useState({ name: '', email: '', role: 'student' as 'student' | 'instructor' });
   const [inviteBusy, setInviteBusy] = useState(false);
@@ -225,6 +226,10 @@ export default function UserDirectoryPage() {
     setSelected(new Set());
   }, [query, roleFilter, statusFilter]);
 
+  useEffect(() => {
+    setEditing(false);
+  }, [inspector?.id]);
+
   const key = (u: DirectoryUser) => `${u.kind}:${u.id}`;
 
   const toggleSelect = (u: DirectoryUser) => {
@@ -250,12 +255,44 @@ export default function UserDirectoryPage() {
     setErr(null);
     setBusyId(u.id);
     try {
-      await api(`/admin/instructors/${u.id}/${status}`, { method: 'POST' });
+      await api(`/admin/instructors/${u.id}/${status === 'approved' ? 'approve' : 'reject'}`, { method: 'POST' });
       setInstructors((prev) => prev.map((i) => (i.id === u.id ? { ...i, approveStatus: status } : i)));
       setInspector((prev) => (prev && prev.kind === 'instructor' && prev.id === u.id ? { ...prev, status } : prev));
       showToast(`${u.name} ${status === 'approved' ? 'approved' : 'rejected'}.`);
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : 'Failed to update instructor');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const openEdit = (u: DirectoryUser) => {
+    setEditForm({
+      name: u.name,
+      email: u.email,
+      role: u.kind,
+      approveStatus: u.status,
+      headline: u.headline ?? '',
+      bio: u.bio ?? '',
+    });
+    setEditing(true);
+  };
+
+  const saveEdit = async () => {
+    if (!inspector) return;
+    setErr(null);
+    setBusyId(inspector.id);
+    try {
+      await api(`/admin/users/${inspector.id}`, {
+        method: 'PUT',
+        body: JSON.stringify(editForm),
+      });
+      setEditing(false);
+      showToast(`${editForm.name} updated.`);
+      load();
+      setInspector(null);
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : 'Failed to update user');
     } finally {
       setBusyId(null);
     }
@@ -272,7 +309,7 @@ export default function UserDirectoryPage() {
     let done = 0;
     for (const t of targets) {
       try {
-        await api(`/admin/instructors/${t.id}/approved`, { method: 'POST' });
+        await api(`/admin/instructors/${t.id}/approve`, { method: 'POST' });
         done += 1;
       } catch {
         /* keep going */
@@ -356,17 +393,6 @@ export default function UserDirectoryPage() {
             { href: '/dashboard/admin/users', label: 'Users & Directory', icon: Users, badge: pendingCount },
             { href: '/dashboard/admin', label: 'Back to Console', icon: LayoutDashboard, match: '' },
           ],
-        },
-        {
-          heading: 'Branding & Domains',
-          links: [
-            { href: '/dashboard/admin/white-label', label: 'White-Label & Themes', icon: Palette },
-            { href: '/dashboard/admin/domain', label: 'Custom Domains & DNS', icon: Globe },
-          ],
-        },
-        {
-          heading: 'Sales',
-          links: [{ href: '/dashboard/admin/coupons', label: 'Coupons & Offers', icon: BadgePercent }],
         },
       ]}
       userName={user?.name ?? 'Admin'}
@@ -556,7 +582,31 @@ export default function UserDirectoryPage() {
                           Reject
                         </button>
                       )}
-                      {(u.kind !== 'instructor' || u.status === 'approved') && (
+                      {(u.kind !== 'instructor' || u.status === 'approved') ? (
+                        <>
+                          <button
+                            onClick={() => setInspector(u)}
+                            className="rounded-lg bg-surface px-3.5 py-1.5 text-[13px] font-semibold text-ink transition hover:bg-brand-soft hover:text-brand"
+                          >
+                            Inspect
+                          </button>
+                          <button
+                            onClick={async () => {
+                              if (!confirm(`Delete ${u.name}?`)) return;
+                              try {
+                                await api(`/admin/users/${u.id}`, { method: 'DELETE' });
+                                load();
+                                showToast('User deleted');
+                              } catch (e) {
+                                setErr('Delete failed');
+                              }
+                            }}
+                            className="rounded-lg border border-red-200 px-3 py-1.5 text-[13px] font-semibold text-red-600 transition hover:bg-red-50"
+                          >
+                            Delete
+                          </button>
+                        </>
+                      ) : (
                         <button
                           onClick={() => setInspector(u)}
                           className="rounded-lg bg-surface px-3.5 py-1.5 text-[13px] font-semibold text-ink transition hover:bg-brand-soft hover:text-brand"
@@ -678,6 +728,64 @@ export default function UserDirectoryPage() {
                   </div>
                 </div>
               </section>
+              {editing && (
+                <section className="space-y-3 rounded-2xl border border-brand/40 bg-card p-4">
+                  <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-brand">Edit user</p>
+                  <div>
+                    <label className="label">Name</label>
+                    <input className="input" value={editForm.name} onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))} />
+                  </div>
+                  <div>
+                    <label className="label">Email</label>
+                    <input type="email" className="input" value={editForm.email} onChange={(e) => setEditForm((f) => ({ ...f, email: e.target.value }))} />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="label">Role</label>
+                      <select className="input" value={editForm.role} onChange={(e) => setEditForm((f) => ({ ...f, role: e.target.value as 'student' | 'instructor' }))}>
+                        <option value="student">Student</option>
+                        <option value="instructor">Instructor</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="label">Status</label>
+                      <select className="input" value={editForm.approveStatus} onChange={(e) => setEditForm((f) => ({ ...f, approveStatus: e.target.value as 'pending' | 'approved' | 'rejected' }))}>
+                        <option value="approved">Approved</option>
+                        <option value="pending">Pending</option>
+                        <option value="rejected">Rejected</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="label">Headline</label>
+                    <input className="input" value={editForm.headline} onChange={(e) => setEditForm((f) => ({ ...f, headline: e.target.value }))} />
+                  </div>
+                  <div>
+                    <label className="label">Bio</label>
+                    <textarea className="input min-h-[70px]" value={editForm.bio} onChange={(e) => setEditForm((f) => ({ ...f, bio: e.target.value }))} />
+                  </div>
+                  <div className="flex justify-end gap-2.5 border-t border-line pt-3.5">
+                    <button onClick={() => setEditing(false)} className="rounded-xl px-4 py-2 text-sm font-semibold text-muted hover:text-ink">
+                      Cancel
+                    </button>
+                    <button
+                      onClick={saveEdit}
+                      disabled={busyId === inspector.id || !editForm.name.trim() || !editForm.email.trim()}
+                      className="btn-primary rounded-xl px-5 py-2 text-sm disabled:opacity-60"
+                    >
+                      {busyId === inspector.id ? 'Saving…' : 'Save changes'}
+                    </button>
+                  </div>
+                </section>
+              )}
+              {!editing && (
+                <button
+                  onClick={() => openEdit(inspector)}
+                  className="w-full rounded-xl border border-line bg-card py-2.5 text-sm font-semibold text-ink transition hover:border-brand/50 hover:bg-brand-soft hover:text-brand"
+                >
+                  Edit user details
+                </button>
+              )}
               {inspector.kind === 'instructor' && (
                 <section className="flex gap-2.5">
                   {inspector.status !== 'approved' && (

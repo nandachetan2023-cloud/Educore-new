@@ -14,6 +14,7 @@ import { Principal } from '../common/enums';
 import { AuthPrincipal } from '../common/decorators';
 import { TenantSuspendedException } from '../common/tenant-suspended.exception';
 import { TenantStatusCache } from '../common/tenant-status-cache.service';
+import { AuditService } from '../audit/audit.service';
 import { RegisterDto, LoginDto } from './dto';
 
 @Injectable()
@@ -24,6 +25,7 @@ export class AuthService {
     private config: ConfigService,
     @Inject(RAW_PRISMA) private raw: PrismaClient,
     private tenantStatusCache: TenantStatusCache,
+    private audit: AuditService,
   ) {}
 
   // ── Registration (students & instructors only; admins are seeded/created
@@ -61,9 +63,11 @@ export class AuthService {
       where: { email: dto.email },
     });
     if (!user || !(await argon2.verify(user.password, dto.password))) {
+      await this.audit.log({ action: 'auth.login_failed', entity: 'user', meta: { email: dto.email } });
       throw new UnauthorizedException('Invalid credentials');
     }
     await this.assertTenantActive(user.tenantId);
+    await this.audit.log({ action: 'auth.login', entity: 'user', entityId: user.id, actorId: user.id, actorName: user.email, actorRole: user.role });
     return this.issueTokens({
       sub: user.id,
       principal: user.role as Principal,
@@ -77,6 +81,7 @@ export class AuthService {
     const account = await this.prisma.admin.findUnique({ where: { email: dto.email } });
 
     if (!account || !(await argon2.verify(account.password, dto.password))) {
+      await this.audit.log({ action: 'auth.login_failed', entity: 'admin', meta: { email: dto.email } });
       throw new UnauthorizedException('Invalid credentials');
     }
 
@@ -84,6 +89,7 @@ export class AuthService {
       await this.assertTenantActive(account.tenantId);
     }
 
+    await this.audit.log({ action: 'auth.login', entity: 'admin', entityId: account.id, actorId: account.id, actorName: account.email, actorRole: `${principal}:${account.role}` });
     return this.issueTokens({
       sub: account.id,
       principal,

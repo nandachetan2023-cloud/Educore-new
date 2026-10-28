@@ -1048,3 +1048,100 @@ model BlogComment {
   @@index([tenantId])
   @@map("blog_comments")
 }
+
+// ─────────────────────────────────────────────────────────────
+//  Platform-level SaaS ops: resellers, audit logs, website leads.
+//  These are NOT tenant-scoped — they belong to the platform owner
+//  (Super Admin) and must be queried via RAW_PRISMA or the scoped
+//  client with no tenant filter.
+// ─────────────────────────────────────────────────────────────
+enum ResellerStatus {
+  active
+  suspended
+}
+
+enum PayoutStatus {
+  pending
+  paid
+}
+
+model Reseller {
+  id             Int            @id @default(autoincrement())
+  name           String
+  email          String         @unique
+  phone          String?
+  companyName    String?        @map("company_name")
+  commissionRate Float          @default(20) @map("commission_rate") // percent of tenant-plan sales
+  status         ResellerStatus @default(active)
+  totalEarned    Float          @default(0) @map("total_earned")
+  createdAt      DateTime       @default(now()) @map("created_at")
+  updatedAt      DateTime       @updatedAt @map("updated_at")
+
+  payouts ResellerPayout[]
+
+  @@map("resellers")
+}
+
+model ResellerPayout {
+  id         Int          @id @default(autoincrement())
+  resellerId Int          @map("reseller_id")
+  amount     Float
+  status     PayoutStatus @default(pending)
+  note       String?
+  createdAt  DateTime     @default(now()) @map("created_at")
+  updatedAt  DateTime     @updatedAt @map("updated_at")
+
+  reseller Reseller @relation(fields: [resellerId], references: [id], onDelete: Cascade)
+
+  @@index([resellerId])
+  @@map("reseller_payouts")
+}
+
+enum AuditActorType {
+  admin
+  user
+  system
+}
+
+model AuditLog {
+  id         Int             @id @default(autoincrement())
+  actorType  AuditActorType  @default(admin) @map("actor_type")
+  actorId    Int?            @map("actor_id")
+  actorName  String?         @map("actor_name")
+  actorRole  String?         @map("actor_role")
+  action     String // e.g. tenant.suspend, coupon.create, auth.login, coupon.blocked
+  entity     String? // e.g. tenant, coupon, plan
+  entityId   Int?            @map("entity_id")
+  meta       Json?
+  ip         String?
+  userAgent  String?         @map("user_agent")
+  createdAt  DateTime        @default(now()) @map("created_at")
+
+  @@index([action])
+  @@index([actorId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+enum LeadStatus {
+  new
+  contacted
+  converted
+  closed
+}
+
+model Lead {
+  id        Int        @id @default(autoincrement())
+  name      String
+  email     String
+  company   String?
+  phone     String?
+  message   String?    @db.Text
+  source    String     @default("trial") // trial | contact | pricing
+  status    LeadStatus @default(new)
+  createdAt DateTime   @default(now()) @map("created_at")
+  updatedAt DateTime   @updatedAt @map("updated_at")
+
+  @@index([status])
+  @@map("leads")
+}

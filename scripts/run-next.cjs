@@ -25,6 +25,11 @@ const child = spawn(process.execPath, [nextBin, ...args], {
   cwd: webDir,
   stdio: 'inherit',
   windowsHide: false,
+  // Next.js internally shells out to `npm config get registry` to decide
+  // where to fetch. When cwd is inside a npm workspace, npm rejects that
+  // call with ENOWORKSPACES. Pre-setting the registry via env avoids the
+  // subprocess entirely.
+  env: { ...process.env, NPM_CONFIG_REGISTRY: process.env.NPM_CONFIG_REGISTRY || 'https://registry.npmjs.org/' },
 });
 child.on('exit', (code, signal) => {
   if (signal) process.kill(process.pid, signal);

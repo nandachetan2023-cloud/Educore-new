@@ -45,6 +45,7 @@ export default function StudentDashboard() {
   useEffect(() => {
     if (authLoading) return;
     if (!user) { router.push('/login?next=/dashboard'); return; }
+    if (user.principal === 'admin') { router.push('/dashboard/admin'); return; }
     if (user.principal === 'instructor') { router.push('/dashboard/instructor'); return; }
     Promise.all([
       api<EnrolledCourse[]>('/learn').catch(() => []),
@@ -80,7 +81,11 @@ export default function StudentDashboard() {
             { href: '/courses', label: 'Browse Courses', icon: BookOpen },
             { href: '/become-instructor', label: 'Become an Instructor', icon: GraduationCap },
             ...(user?.principal === 'admin'
-              ? [{ href: '/dashboard/admin', label: 'Admin Portal', icon: ShieldCheck }]
+              ? [{
+                  href: user?.adminRole === 'super_admin' ? '/dashboard/superadmin' : '/dashboard/admin',
+                  label: user?.adminRole === 'super_admin' ? 'Platform Console' : 'Admin Portal',
+                  icon: ShieldCheck,
+                }]
               : []),
           ],
         },

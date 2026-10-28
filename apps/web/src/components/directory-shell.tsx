@@ -92,10 +92,9 @@ export function DirectoryShell({
   return (
     <div className="min-h-screen bg-surface">
       {/* ── Sidebar (desktop) ─────────────────────────── */}
-      <aside className="fixed left-0 top-0 z-40 hidden h-screen w-64 flex-col justify-between overflow-y-auto border-r border-line bg-card py-6 shadow-[0_1px_8px_rgba(0,0,0,0.04)] lg:flex">
+      <aside className="fixed left-0 top-0 z-40 hidden h-screen w-64 flex-col justify-between overflow-y-auto border-r border-[#1e293b] bg-[#0b1226] py-6 shadow-[0_1px_8px_rgba(0,0,0,0.35)] lg:flex">
         <div className="flex flex-col gap-6">
           <div className="flex items-center gap-2.5 px-6">
-            <BrandMark size="sm" />
             <div className="flex min-w-0 flex-col">
               <BrandName className="truncate text-[15px] font-extrabold leading-tight text-ink" />
               <span className="text-[11px] font-medium text-muted">{eyebrow}</span>
@@ -164,13 +163,9 @@ export function DirectoryShell({
 
         <div className="flex flex-col gap-3 px-4">
           <div className="flex items-center gap-3 rounded-xl bg-surface px-4 py-3">
-            {userImage ? (
-              <img src={userImage} alt="" className="h-8 w-8 shrink-0 rounded-full object-cover" />
-            ) : (
-              <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-brand-soft text-xs font-bold text-brand">
-                {initials(userName || 'U')}
-              </span>
-            )}
+            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-brand-soft text-xs font-bold text-brand">
+              {initials(userName || 'U')}
+            </span>
             <div className="min-w-0 flex-1">
               <p className="truncate text-[13px] font-semibold text-ink">{userName}</p>
               <p className="truncate text-[11px] text-muted">{userCaption}</p>

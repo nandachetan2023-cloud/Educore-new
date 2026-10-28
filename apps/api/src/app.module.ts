@@ -40,6 +40,9 @@ import { HealthModule } from './health/health.module';
 import { PagesModule } from './pages/pages.module';
 import { BillingModule } from './billing/billing.module';
 import { DomainsModule } from './domains/domains.module';
+import { AuditModule } from './audit/audit.module';
+import { ResellersModule } from './resellers/resellers.module';
+import { LeadsModule } from './leads/leads.module';
 
 @Module({
   imports: [
@@ -98,6 +101,9 @@ import { DomainsModule } from './domains/domains.module';
     PagesModule,
     BillingModule,
     DomainsModule,
+    AuditModule,
+    ResellersModule,
+    LeadsModule,
   ],
   providers: [
     // Order matters: authenticate, then rate-limit, then authorize by role.

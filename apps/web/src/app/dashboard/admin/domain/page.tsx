@@ -7,7 +7,7 @@ import { useRouter } from 'next/navigation';
 export default function DomainRedirect() {
   const router = useRouter();
   useEffect(() => {
-    router.replace('/dashboard/admin/white-label');
+    router.replace('/dashboard/superadmin/white-label');
   }, [router]);
   return <div className="container-page py-20 text-center text-muted">Redirecting…</div>;
 }

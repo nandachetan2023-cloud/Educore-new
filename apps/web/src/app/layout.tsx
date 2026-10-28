@@ -25,7 +25,7 @@ const serifDisplay = Source_Serif_4({
 
 const DEFAULT_BRANDING: Branding = {
   name: 'EduCore',
-  logo: '/brand/logo.svg',
+  logo: '/logo/logo.svg',
   favicon: '/brand/favicon.ico',
   primaryColor: '#4f46e5',
   secondaryColor: '#0ea5e9',

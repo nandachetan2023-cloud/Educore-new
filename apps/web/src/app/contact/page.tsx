@@ -68,6 +68,12 @@ export default function ContactPage() {
         body: JSON.stringify(form),
         auth: false,
       });
+      // Also capture as a platform lead for the Super Admin pipeline (best-effort).
+      await api('/leads', {
+        method: 'POST',
+        body: JSON.stringify({ ...form, source: 'contact' }),
+        auth: false,
+      }).catch(() => {});
       setSent(true);
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : 'Failed to send message. Please try again.');

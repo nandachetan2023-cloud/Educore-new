@@ -6,6 +6,7 @@ import {
   Delete,
   Get,
   Injectable,
+  Inject,
   Module,
   NotFoundException,
   Param,
@@ -30,9 +31,12 @@ import {
 } from 'class-validator';
 import { ApiTags } from '@nestjs/swagger';
 import slugify from 'slugify';
+import { PrismaClient } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
-import { CurrentUser, Public, Roles } from '../common/decorators';
+import { RAW_PRISMA } from '../prisma/prisma.module';
+import { CurrentUser, Public, Roles, SuperAdmin } from '../common/decorators';
 import { Principal } from '../common/enums';
+import { AuditService } from '../audit/audit.service';
 import {
   PricableCourse,
   PromoRule,
@@ -166,7 +170,10 @@ class ValidateCouponDto {
 
 @Injectable()
 export class CouponsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    @Inject(RAW_PRISMA) private raw: PrismaClient,
+  ) {}
 
   // ── Admin: coupons ─────────────────────────────────────────────
   listCoupons(status?: string) {
@@ -208,8 +215,57 @@ export class CouponsService {
     });
   }
 
-  async updateCoupon(id: number, dto: UpdateCouponDto) {
-    const current = await this.requireCoupon(id);
+  /**
+   * Super-Admin grant flow (spec §9): the platform owner creates a coupon and
+   * grants it to ALL workspaces or ONE specific workspace. Written via
+   * RAW_PRISMA with an explicit tenantId — the scoped client would otherwise
+   * create a dead `tenantId = 0` row that no tenant's checkout can see.
+   * Checkout isolation stays airtight: each workspace gets its own row, so a
+   * code granted to workspace A simply doesn't exist in workspace B.
+   */
+  async createForTenants(dto: CouponDto, grant: { all?: boolean; tenantId?: number }) {
+    const code = normalizeCode(dto.code);
+    this.assertWindow(dto.startsAt, dto.endsAt);
+    this.assertValues(dto.type, dto.value, dto.maxDiscount);
+
+    const targets =
+      grant.all
+        ? await this.raw.tenant.findMany({ where: { status: { not: 'suspended' } }, select: { id: true } })
+        : [{ id: grant.tenantId as number }];
+    if (targets.length === 0) throw new BadRequestException('No target workspace');
+
+    const base = {
+      code,
+      description: dto.description?.trim() || null,
+      type: dto.type,
+      value: dto.value,
+      minOrderAmount: dto.minOrderAmount ?? null,
+      maxDiscount: dto.maxDiscount ?? null,
+      target: dto.target,
+      courseIds: dto.courseIds ?? [],
+      categoryIds: dto.categoryIds ?? [],
+      usageLimit: dto.usageLimit ?? null,
+      perUserLimit: dto.perUserLimit ?? 1,
+      startsAt: toDate(dto.startsAt),
+      endsAt: toDate(dto.endsAt),
+      status: dto.status ?? true,
+    };
+
+    const createdTenantIds: number[] = [];
+    const skippedTenantIds: number[] = [];
+    for (const t of targets) {
+      const exists = await this.raw.coupon.findFirst({ where: { tenantId: t.id, code }, select: { id: true } });
+      if (exists) {
+        skippedTenantIds.push(t.id);
+        continue;
+      }
+      await this.raw.coupon.create({ data: { ...base, tenantId: t.id } });
+      createdTenantIds.push(t.id);
+    }
+    return { code, created: createdTenantIds.length, skipped: skippedTenantIds.length, createdTenantIds, skippedTenantIds };
+  }
+
+  async updateCoupon(id: number, dto: UpdateCouponDto) {    const current = await this.requireCoupon(id);
     if (dto.code && normalizeCode(dto.code) !== current.code) {
       await this.assertCodeFree(normalizeCode(dto.code));
     }
@@ -666,7 +722,7 @@ function iso(value: Date | null): string | null {
 @ApiTags('coupons')
 @Controller('coupons')
 export class CouponsController {
-  constructor(private coupons: CouponsService) {}
+  constructor(private coupons: CouponsService, private audit: AuditService) {}
 
   /** Live offers for the storefront banner/carousel. */
   @Public()
@@ -679,8 +735,20 @@ export class CouponsController {
   /** Check a code against the current cart without buying anything. */
   @Roles(Principal.STUDENT, Principal.INSTRUCTOR)
   @Post('validate')
-  validate(@CurrentUser('sub') userId: number, @Body() dto: ValidateCouponDto) {
-    return this.coupons.preview(userId, dto.code);
+  async validate(@CurrentUser('sub') userId: number, @Body() dto: ValidateCouponDto) {
+    try {
+      return await this.coupons.preview(userId, dto.code);
+    } catch (e) {
+      // Blocked/rejected coupon attempt — audit trail for the Super Admin.
+      await this.audit.log({
+        action: 'coupon.blocked',
+        entity: 'coupon',
+        actorType: 'user',
+        actorId: userId,
+        meta: { code: dto.code, reason: e instanceof Error ? e.message : 'unknown' },
+      });
+      throw e;
+    }
   }
 }
 
@@ -688,7 +756,7 @@ export class CouponsController {
 @Controller('admin/coupons')
 @Roles(Principal.ADMIN)
 export class AdminCouponsController {
-  constructor(private coupons: CouponsService) {}
+  constructor(private coupons: CouponsService, private audit: AuditService) {}
 
   @Get('summary')
   summary() {
@@ -706,8 +774,10 @@ export class AdminCouponsController {
   }
 
   @Post()
-  create(@Body() dto: CouponDto) {
-    return this.coupons.createCoupon(dto);
+  async create(@Body() dto: CouponDto) {
+    const coupon = await this.coupons.createCoupon(dto);
+    await this.audit.log({ action: 'coupon.create', entity: 'coupon', entityId: coupon.id, meta: { code: coupon.code, type: coupon.type, value: coupon.value } });
+    return coupon;
   }
 
   @Put(':id')
@@ -748,9 +818,34 @@ export class AdminOffersController {
   }
 }
 
+/**
+ * Platform-level coupon grants (spec §9). ONLY the Super Admin creates
+ * coupons; `grant: 'all'` fans the code out to every active workspace,
+ * `grant: 'tenant'` grants it to exactly one — every other workspace can
+ * never see or redeem it (each row is tenant-scoped).
+ */
+@ApiTags('platform coupons')
+@Controller('admin/platform/coupons')
+@SuperAdmin()
+export class PlatformCouponsController {
+  constructor(private coupons: CouponsService, private audit: AuditService) {}
+
+  @Post()
+  async grant(@Body() body: CouponDto & { grant?: 'all' | 'tenant'; tenantId?: number }) {
+    if (body.grant === 'tenant' && !body.tenantId) throw new BadRequestException('Pick a workspace to grant this coupon to');
+    const result = await this.coupons.createForTenants(body, { all: body.grant !== 'tenant', tenantId: body.tenantId });
+    await this.audit.log({
+      action: 'coupon.grant',
+      entity: 'coupon',
+      meta: { code: result.code, grant: body.grant ?? 'all', created: result.created, skipped: result.skipped },
+    });
+    return result;
+  }
+}
+
 @Module({
   providers: [CouponsService],
-  controllers: [CouponsController, AdminCouponsController, AdminOffersController],
+  controllers: [CouponsController, AdminCouponsController, AdminOffersController, PlatformCouponsController],
   exports: [CouponsService],
 })
 export class CouponsModule {}

@@ -58,6 +58,9 @@ async function main() {
   await prisma.courseLevel.deleteMany();
   await prisma.courseLanguage.deleteMany();
   await prisma.user.deleteMany();
+  await prisma.lead.deleteMany();
+  await prisma.resellerPayout.deleteMany();
+  await prisma.reseller.deleteMany();
   await prisma.subscription.deleteMany();
   // Admin <-> Tenant is a RESTRICT cycle (admins.tenant_id, tenants.owner_admin_id),
   // so detach admins first — otherwise re-seeding a non-empty DB fails.
@@ -310,6 +313,31 @@ async function main() {
   console.log('› Acme custom pages…');
   for (const p of CUSTOM_PAGES) await prisma.customPage.create({ data: { tenantId: acmeId, ...p } });
 
+  console.log('› Mock orders for admin visibility…');
+  let orderNo = 1;
+  for (const student of acmeStudents.slice(0, 3)) {
+    for (const course of acmeCourses.slice(0, 4)) {
+      const total = (course.price ?? 0) * (1 - (course.discount ?? 0) / 100);
+      await prisma.order.create({
+        data: {
+          tenantId: acmeId,
+          invoiceId: `INV-${String(orderNo).padStart(4, '0')}`,
+          buyerId: student.id,
+          status: 'approved',
+          totalAmount: total,
+          paidAmount: total,
+          currency: 'usd',
+          transactionId: `txn_mock_${orderNo}`,
+          paymentMethod: 'card',
+          items: {
+            create: [{ tenantId: acmeId, courseId: course.id, qty: 1, price: course.price ?? 0 }],
+          },
+        },
+      });
+      orderNo++;
+    }
+  }
+
   // ───────────────────────────────────────────────────────────
   //  Tenant 2: Nova Learning — a small, separate tenant, specifically to
   //  prove isolation (never shares an id/email/slug with Acme).
@@ -381,10 +409,99 @@ async function main() {
     data: { tenantId: novaId, title: 'Nova Learning', subTitle: 'A smaller, separately-branded tenant used to prove multi-tenant isolation.', image: img('banner_img.png') },
   });
 
+  console.log('› Platform: website leads…');
+  const leadSeeds: Array<{
+    name: string; email: string; company?: string; phone?: string;
+    message?: string; source: 'trial' | 'contact' | 'pricing';
+    status: 'new' | 'contacted' | 'converted' | 'closed';
+    daysAgo: number;
+  }> = [
+    { name: 'Priya Sharma', email: 'priya.sharma@brightpath.io', company: 'BrightPath Coaching', phone: '+91 98765 43210', message: 'Interested in a white-label LMS for our corporate training programs. Can we schedule a demo?', source: 'pricing', status: 'new', daysAgo: 1 },
+    { name: 'Marcus Chen', email: 'marcus@learnnova.co', company: 'LearnNova', phone: '+1 (415) 555-0192', message: 'Looking to migrate 2,000+ courses from Teachable. Need multi-tenant support and custom domains.', source: 'trial', status: 'new', daysAgo: 2 },
+    { name: 'Aisha Rahman', email: 'aisha.rahman@eduforge.ae', company: 'EduForge MENA', message: 'We need RTL support and Arabic localization. Is that on the roadmap?', source: 'contact', status: 'contacted', daysAgo: 5 },
+    { name: 'Tomás García', email: 'tomas@academiaonline.mx', company: 'Academia Online', phone: '+52 55 1234 5678', message: 'Pricing for the Pro plan with 5,000 seats? Also interested in Razorpay integration.', source: 'pricing', status: 'contacted', daysAgo: 7 },
+    { name: 'Hannah Kim', email: 'hannah.kim@skillbridge.kr', company: 'SkillBridge', message: 'Started the free trial yesterday. The course builder looks great — one question about certificates.', source: 'trial', status: 'converted', daysAgo: 12 },
+    { name: 'James O\'Neill', email: 'james@devacademy.ie', company: 'Dev Academy Ireland', phone: '+353 87 555 0123', message: 'We\'re an coding bootcamp looking for a full white-label solution with our own branding.', source: 'trial', status: 'converted', daysAgo: 18 },
+    { name: 'Fatima Al-Hassan', email: 'fatima@learnhub.sa', company: 'LearnHub KSA', message: 'Interested in reseller partnership for the Gulf region.', source: 'contact', status: 'new', daysAgo: 3 },
+    { name: 'Lucas Weber', email: 'lucas.weber@kurswelt.de', company: 'Kurswelt', phone: '+49 170 555 0198', message: 'Need GDPR-compliant hosting in EU. Do you have Frankfurt region?', source: 'pricing', status: 'contacted', daysAgo: 9 },
+    { name: 'Sofia Rossi', email: 'sofia@formazione-it.it', company: 'Formazione IT', message: 'Trial user — the instructor dashboard is exactly what we need. Can we get a call with sales?', source: 'trial', status: 'converted', daysAgo: 22 },
+    { name: 'David Okafor', email: 'david.okafor@techskills.ng', company: 'TechSkills Africa', message: 'Exploring LMS options for vocational training across Nigeria. Mobile-first is a must.', source: 'contact', status: 'closed', daysAgo: 30 },
+    { name: 'Emma Larsson', email: 'emma@nordiclearning.se', company: 'Nordic Learning AB', phone: '+46 70 555 0145', message: 'We went with a competitor for now — pricing was the main factor. Keep us on the list?', source: 'pricing', status: 'closed', daysAgo: 45 },
+    { name: 'Raj Patel', email: 'raj.patel@skillup.in', company: 'SkillUp India', message: 'Just signed up for the trial. Looking forward to exploring the coupon features.', source: 'trial', status: 'new', daysAgo: 1 },
+  ];
+  for (const l of leadSeeds) {
+    const createdAt = new Date(Date.now() - l.daysAgo * 24 * 60 * 60 * 1000);
+    await prisma.lead.create({
+      data: {
+        name: l.name,
+        email: l.email,
+        company: l.company,
+        phone: l.phone,
+        message: l.message,
+        source: l.source,
+        status: l.status,
+        createdAt,
+      },
+    });
+  }
+
+  console.log('› Platform: resellers…');
+  const resellerSeeds = [
+    { name: 'EduDistributors GmbH', email: 'partners@edudist.de', phone: '+49 30 555 0100', companyName: 'EduDistributors GmbH', commissionRate: 25, status: 'active' as const, totalEarned: 4250, payouts: [
+      { amount: 1500, status: 'paid' as const, note: 'Q3 commission — 12 tenant sales', daysAgo: 40 },
+      { amount: 2750, status: 'paid' as const, note: 'Q4 commission — 19 tenant sales', daysAgo: 10 },
+      { amount: 800, status: 'pending' as const, note: 'Interim payout for Acme referral', daysAgo: 2 },
+    ]},
+    { name: 'SaaS Resell Partners', email: 'hello@saasresell.com', phone: '+1 (646) 555 0177', companyName: 'SaaS Resell Partners LLC', commissionRate: 20, status: 'active' as const, totalEarned: 1800, payouts: [
+      { amount: 1200, status: 'paid' as const, note: 'Monthly commission batch', daysAgo: 25 },
+      { amount: 600, status: 'pending' as const, note: 'November commissions', daysAgo: 5 },
+    ]},
+    { name: 'LearnTech MENA', email: 'sales@learntechmena.ae', phone: '+971 4 555 0134', companyName: 'LearnTech FZ-LLC', commissionRate: 30, status: 'active' as const, totalEarned: 7200, payouts: [
+      { amount: 3200, status: 'paid' as const, note: 'Enterprise deal — Gulf University', daysAgo: 60 },
+      { amount: 4000, status: 'paid' as const, note: 'Bulk license sale — 500 seats', daysAgo: 15 },
+    ]},
+    { name: 'CloudEd Resellers', email: 'team@clouded.au', phone: '+61 2 5550 0198', companyName: 'CloudEd Pty Ltd', commissionRate: 18, status: 'active' as const, totalEarned: 950, payouts: [
+      { amount: 950, status: 'paid' as const, note: 'First quarter commission', daysAgo: 30 },
+    ]},
+    { name: 'Nordic EdTech AB', email: 'contact@nordicedtech.se', phone: '+46 8 555 0122', companyName: 'Nordic EdTech AB', commissionRate: 22, status: 'suspended' as const, totalEarned: 3400, payouts: [
+      { amount: 3400, status: 'paid' as const, note: 'Final settlement before suspension', daysAgo: 50 },
+    ]},
+    { name: 'EduPrime Africa', email: 'info@eduprime.ng', phone: '+234 1 555 0167', companyName: 'EduPrime Nigeria Ltd', commissionRate: 28, status: 'active' as const, totalEarned: 2100, payouts: [
+      { amount: 1400, status: 'paid' as const, note: 'West Africa expansion bonus', daysAgo: 20 },
+      { amount: 700, status: 'pending' as const, note: 'October referral commissions', daysAgo: 3 },
+    ]},
+  ];
+  for (const r of resellerSeeds) {
+    const reseller = await prisma.reseller.create({
+      data: {
+        name: r.name,
+        email: r.email,
+        phone: r.phone,
+        companyName: r.companyName,
+        commissionRate: r.commissionRate,
+        status: r.status,
+        totalEarned: r.totalEarned,
+      },
+    });
+    for (const p of r.payouts) {
+      await prisma.resellerPayout.create({
+        data: {
+          resellerId: reseller.id,
+          amount: p.amount,
+          status: p.status,
+          note: p.note,
+          createdAt: new Date(Date.now() - p.daysAgo * 24 * 60 * 60 * 1000),
+        },
+      });
+    }
+  }
+
   console.log('✓ Seed complete:', {
     superadmin: 'superadmin@gmail.com / password',
     acme: { tenantId: acmeId, admin: 'admin@gmail.com / password', courses: acmeCourses.length },
     nova: { tenantId: novaId, admin: 'admin@nova.test / password', courses: 1 },
+    leads: leadSeeds.length,
+    resellers: resellerSeeds.length,
   });
 }
 

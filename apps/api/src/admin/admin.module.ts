@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Module, Param, ParseIntPipe, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Module, Param, ParseIntPipe, Post, Put, Query } from '@nestjs/common';
 import { IsEmail, IsIn, IsOptional, IsString, MinLength } from 'class-validator';
 import { ApiTags } from '@nestjs/swagger';
 import { AdminService } from './admin.service';
@@ -9,6 +9,16 @@ class InviteUserDto {
   @IsString() name!: string;
   @IsEmail() email!: string;
   @IsIn(['student', 'instructor']) role!: 'student' | 'instructor';
+  @IsOptional() @IsString() @MinLength(8) password?: string;
+}
+
+class UpdateUserDto {
+  @IsOptional() @IsString() name?: string;
+  @IsOptional() @IsEmail() email?: string;
+  @IsOptional() @IsIn(['student', 'instructor']) role?: 'student' | 'instructor';
+  @IsOptional() @IsIn(['pending', 'approved', 'rejected']) approveStatus?: 'pending' | 'approved' | 'rejected';
+  @IsOptional() @IsString() headline?: string;
+  @IsOptional() @IsString() bio?: string;
   @IsOptional() @IsString() @MinLength(8) password?: string;
 }
 
@@ -71,6 +81,23 @@ export class AdminController {
   @Post('users')
   inviteUser(@Body() dto: InviteUserDto) {
     return this.admin.inviteUser(dto);
+  }
+
+  // ── User CRUD (Read / Update / Delete; Create is inviteUser above) ──
+
+  @Get('users')
+  listUsers(@Query('role') role?: string) {
+    return this.admin.listUsers(role);
+  }
+
+  @Put('users/:id')
+  updateUser(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateUserDto) {
+    return this.admin.updateUser(id, dto);
+  }
+
+  @Delete('users/:id')
+  deleteUser(@Param('id', ParseIntPipe) id: number) {
+    return this.admin.deleteUser(id);
   }
 
   // Destructive — only the top admin tier may wipe transactional data.

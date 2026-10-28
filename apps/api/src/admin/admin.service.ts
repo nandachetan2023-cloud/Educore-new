@@ -134,6 +134,109 @@ export class AdminService {
   }
 
   /**
+   * Full user directory (Create/Read half of user CRUD). Tenant admins only
+   * see their own tenant's users (the Prisma tenant-scoping extension injects
+   * tenantId automatically); the superadmin has no tenant in CLS, so their
+   * query runs unscoped and spans every workspace.
+   */
+  listUsers(role?: string) {
+    return this.prisma.user.findMany({
+      where: role ? { role: role as any } : {},
+      select: {
+        id: true, name: true, email: true, role: true, image: true, headline: true,
+        bio: true, approveStatus: true, wallet: true, tenantId: true, createdAt: true,
+        _count: { select: { courses: true, enrollments: true, orders: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  /** Update a user's profile/role/status (the "U" of user CRUD). */
+  async updateUser(
+    id: number,
+    dto: {
+      name?: string; email?: string; role?: 'student' | 'instructor';
+      approveStatus?: 'pending' | 'approved' | 'rejected';
+      headline?: string; bio?: string; password?: string;
+    },
+  ) {
+    const user = await this.prisma.user.findFirst({ where: { id } });
+    if (!user) throw new NotFoundException('User not found');
+    if (dto.email) {
+      const email = dto.email.toLowerCase();
+      const dupe = await this.prisma.user.findFirst({ where: { email, id: { not: id } } });
+      if (dupe) throw new ConflictException('A user with this email already exists');
+    }
+    return this.prisma.user.update({
+      where: { id },
+      data: {
+        ...(dto.name ? { name: dto.name.trim() } : {}),
+        ...(dto.email ? { email: dto.email.toLowerCase() } : {}),
+        ...(dto.role ? { role: dto.role } : {}),
+        ...(dto.approveStatus ? { approveStatus: dto.approveStatus } : {}),
+        ...(dto.headline !== undefined ? { headline: dto.headline } : {}),
+        ...(dto.bio !== undefined ? { bio: dto.bio } : {}),
+        ...(dto.password ? { password: await argon2.hash(dto.password) } : {}),
+      },
+      select: {
+        id: true, name: true, email: true, role: true, approveStatus: true,
+        headline: true, bio: true, updatedAt: true,
+      },
+    });
+  }
+
+  /**
+   * Delete a user with every dependent row, FK-safe, in one transaction:
+   * the instructor's courses (chapters, lessons, and everything pointing at
+   * those courses), then the user's own orders/items/redemptions, then their
+   * enrollments, reviews, watch history, carts, payout records, and finally
+   * the user row itself. Admins are deliberately NOT deletable here — they
+   * belong to /admin/admins.
+   */
+  async deleteUser(id: number) {
+    const user = await this.prisma.user.findFirst({ where: { id } });
+    if (!user) throw new NotFoundException('User not found');
+
+    return this.prisma.$transaction(async (tx) => {
+      // 1. Everything hanging off this instructor's courses.
+      const courses = await tx.course.findMany({ where: { instructorId: id }, select: { id: true } });
+      const courseIds = courses.map((c) => c.id);
+      if (courseIds.length) {
+        await tx.courseChapterLession.deleteMany({ where: { courseId: { in: courseIds } } });
+        await tx.courseChapter.deleteMany({ where: { courseId: { in: courseIds } } });
+        await tx.watchHistory.deleteMany({ where: { courseId: { in: courseIds } } });
+        await tx.review.deleteMany({ where: { courseId: { in: courseIds } } });
+        await tx.enrollment.deleteMany({ where: { courseId: { in: courseIds } } });
+        await tx.cart.deleteMany({ where: { courseId: { in: courseIds } } });
+        await tx.orderItem.deleteMany({ where: { courseId: { in: courseIds } } });
+        await tx.course.deleteMany({ where: { id: { in: courseIds } } });
+      }
+
+      // 2. Orders this user placed (items + coupon redemptions point at them).
+      const orders = await tx.order.findMany({ where: { buyerId: id }, select: { id: true } });
+      const orderIds = orders.map((o) => o.id);
+      if (orderIds.length) {
+        await tx.couponRedemption.deleteMany({ where: { orderId: { in: orderIds } } });
+        await tx.orderItem.deleteMany({ where: { orderId: { in: orderIds } } });
+        await tx.order.deleteMany({ where: { buyerId: id } });
+      }
+      await tx.couponRedemption.deleteMany({ where: { userId: id } });
+
+      // 3. The user's own learning/payment records.
+      await tx.watchHistory.deleteMany({ where: { userId: id } });
+      await tx.review.deleteMany({ where: { userId: id } });
+      await tx.enrollment.deleteMany({ where: { userId: id } });
+      await tx.cart.deleteMany({ where: { userId: id } });
+      await tx.withdraw.deleteMany({ where: { instructorId: id } });
+      await tx.instructorPayoutInformation.deleteMany({ where: { instructorId: id } });
+
+      // 4. Finally the user.
+      await tx.user.delete({ where: { id } });
+      return { removed: true, coursesRemoved: courseIds.length, ordersRemoved: orderIds.length };
+    });
+  }
+
+  /**
    * Admin-invited account (directory "Invite" button). Admin-created users
    * are trusted on creation: approved + email-verified immediately.
    * Returns the record plus a one-time temp password for the admin to pass

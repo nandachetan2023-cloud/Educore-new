@@ -130,13 +130,15 @@ export default function AdminConsole() {
       sections={[
         {
           heading: 'Workspace',
-            links: TABS.map((t) => ({ label: t.label, icon: t.icon, active: tab === t.key, onClick: () => setTab(t.key) })),
+            links: [
+              ...TABS.map((t) => ({ label: t.label, icon: t.icon, active: tab === t.key, onClick: () => setTab(t.key) })),
+              { href: '/dashboard/admin/users', label: 'Users & Directory', icon: Users },
+            ],
         },
         {
           heading: 'Platform',
           links: [
-            { href: '/dashboard/admin/coupons', label: 'Coupons & offers', icon: BadgePercent },
-            { href: '/dashboard/admin/white-label', label: 'White label', icon: Palette },
+            { href: '/dashboard/admin/coupons', label: 'My Coupons', icon: BadgePercent },
             { href: '/dashboard/admin/billing', label: 'Billing', icon: CreditCard },
             { href: '/dashboard/admin/content', label: 'Site content', icon: FileText },
           ],
@@ -148,6 +150,17 @@ export default function AdminConsole() {
       onLogout={logout}
     >
       <div style={{ fontFamily: 'var(--font-admin-body)' }}>
+        {/* Admin own profile */}
+        <div className="mb-6 rounded-2xl border border-[#EAE6DB] bg-white p-5 shadow-sm flex flex-wrap items-center gap-4">
+          <div className="h-12 w-12 rounded-full bg-brand-soft text-brand grid place-items-center font-extrabold text-lg">
+            {user?.name?.[0]?.toUpperCase() ?? 'A'}
+          </div>
+          <div>
+            <h2 className="font-bold text-ink">{user?.name ?? 'Admin'}</h2>
+            <p className="text-sm text-muted">{user?.email} · {user?.principal} · {user?.adminRole}</p>
+          </div>
+        </div>
+
         <div className="mx-auto max-w-[1220px]">
             {/* Mobile nav (sidebar is desktop-only) */}
             <div className="mb-6 flex flex-wrap gap-2 lg:hidden">
@@ -160,9 +173,7 @@ export default function AdminConsole() {
                   {t.label}
                 </button>
               ))}
-              <Link href="/dashboard/admin/white-label" className="btn-ghost px-3 py-2 text-sm">White label</Link>
               <Link href="/dashboard/admin/billing" className="btn-ghost px-3 py-2 text-sm">Billing</Link>
-              <Link href="/dashboard/admin/coupons" className="btn-ghost px-3 py-2 text-sm">Coupons</Link>
             </div>
 
             <header className="mb-7 flex flex-wrap items-center justify-between gap-4">

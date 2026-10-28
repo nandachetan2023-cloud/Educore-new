@@ -51,7 +51,7 @@ export default function WhiteLabelPage() {
 
   useEffect(() => {
     if (authLoading) return;
-    if (!user || user.principal !== 'admin') { router.push('/login?next=/dashboard/admin/white-label'); return; }
+    if (!user || user.principal !== 'admin' || user.adminRole !== 'super_admin') { router.push('/login?next=/dashboard/superadmin/white-label'); return; }
     Promise.all([
       api<Branding>('/admin/branding'),
       api<DomainInfo>('/admin/domain'),
@@ -72,7 +72,7 @@ export default function WhiteLabelPage() {
         body: JSON.stringify({ ...form, commissionRate: String(form.commissionRate) }),
       });
       setMsg('Brand settings saved. Applying…');
-      setTimeout(() => window.location.assign('/dashboard/admin/white-label'), 700);
+      setTimeout(() => window.location.assign('/dashboard/superadmin/white-label'), 700);
     } catch (e) {
       setErr(e instanceof ApiError ? e.message : 'Failed to save');
       setBusy(false);
@@ -82,7 +82,7 @@ export default function WhiteLabelPage() {
   const reset = async () => {
     if (!confirm('Reset all branding to the platform defaults?')) return;
     await api('/admin/branding/reset', { method: 'PUT' });
-    window.location.assign('/dashboard/admin/white-label');
+    window.location.assign('/dashboard/superadmin/white-label');
   };
 
   const setDomainSubmit = async (e: React.FormEvent) => {
@@ -121,7 +121,7 @@ export default function WhiteLabelPage() {
 
   return (
     <div className="container-page max-w-6xl py-10">
-      <Link href="/dashboard/admin" className="text-sm text-muted hover:text-brand">← Admin console</Link>
+      <Link href="/dashboard/superadmin" className="text-sm text-muted hover:text-brand">← Platform console</Link>
       <h1 className="mt-3 text-3xl font-extrabold">White label</h1>
       <p className="mt-1 text-muted">Your brand identity and custom domain — how your students and instructors see this platform.</p>
 
