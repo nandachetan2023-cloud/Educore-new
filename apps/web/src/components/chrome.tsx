@@ -28,9 +28,9 @@ const TONES: Record<Announcement['tone'], string> = {
 /**
  * Site-wide promotional strip rendered above the marketing navbar. Copy comes
  * from Admin → Site content, so campaigns can be launched without a deploy.
- * A visitor who dismisses it stays dismissed for that message — the stored
- * fingerprint changes when the copy does, so editing the banner brings it
- * back for everyone.
+ * A visitor who dismisses it stays dismissed for the rest of their browser
+ * session — the stored fingerprint changes when the copy does, so editing the
+ * banner brings it back for everyone.
  */
 function AnnouncementBar({ announcement }: { announcement: Announcement }) {
   // Starts false so the strip is part of the server-rendered HTML — a promo
@@ -43,13 +43,16 @@ function AnnouncementBar({ announcement }: { announcement: Announcement }) {
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    setDismissed(window.localStorage.getItem(DISMISS_KEY) === fingerprint);
+    // Dismissal used to be permanent (localStorage). Drop that stale key so
+    // visitors who closed the banner before this change see it again.
+    window.localStorage.removeItem(DISMISS_KEY);
+    setDismissed(window.sessionStorage.getItem(DISMISS_KEY) === fingerprint);
   }, [fingerprint]);
 
   if (!announcement?.enabled || !announcement.message || dismissed) return null;
 
   const dismiss = () => {
-    window.localStorage.setItem(DISMISS_KEY, fingerprint);
+    window.sessionStorage.setItem(DISMISS_KEY, fingerprint);
     setDismissed(true);
   };
 
