@@ -38,6 +38,7 @@ if errorlevel 1 (
 )
 for /f "tokens=*" %%v in ('node -v') do set NODE_VER=%%v
 for /f "tokens=1 delims=v." %%M in ("%NODE_VER%") do set NODE_MAJOR=%%M
+if not defined NODE_MAJOR set NODE_MAJOR=0
 if %NODE_MAJOR% LSS 20 (
   echo  ERROR: Node.js %NODE_VER% found - v20 or higher is required.
   pause
@@ -200,7 +201,7 @@ if errorlevel 1 (
   pause
   exit /b 1
 )
-echo  Seed complete.
+echo  Seed complete ^(tenants, courses, users, leads ^& resellers^).
 echo.
 
 :: ──────────────────────────────────────────────

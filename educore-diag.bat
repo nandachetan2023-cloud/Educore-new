@@ -78,7 +78,17 @@ echo.
 :: 5 - Build outputs
 echo  [5/7] Build outputs
 if exist "%API%\dist\src\main.js" (echo        API dist    : present) else (echo        API dist    : MISSING - npm run build --workspace=@educore/api)
-if exist "%WEB%\.next"           (echo        Web .next   : present) else (echo        Web .next   : MISSING - npm run build --workspace=@educore/web)
+if exist "%WEB%\.next" (
+  echo        Web .next   : present
+) else (
+  if exist "%WEB%\.next-runtime-dev" (
+    echo        Web .next   : dev build only ^(.next-runtime-dev^)
+  ) else (
+    echo        Web .next   : MISSING - npm run build --workspace=@educore/web
+  )
+)
+if exist "%WEB%\public\brand\logo.svg" (echo        Brand logo  : present) else (echo        Brand logo  : MISSING - apps\web\public\brand\logo.svg)
+if exist "%WEB%\public\brand\favicon.ico" (echo        Favicon     : present) else (echo        Favicon     : MISSING - apps\web\public\brand\favicon.ico)
 echo.
 
 :: 6 - Ports / running servers
