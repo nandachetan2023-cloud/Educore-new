@@ -69,9 +69,10 @@ async function main() {
   await prisma.admin.deleteMany();
   await prisma.plan.deleteMany();
 
+  // One demo password for every account — matches the login-form demo rows.
   const [adminPass, userPass] = await Promise.all([
     argon2.hash('password'),
-    argon2.hash('12345678'),
+    argon2.hash('password'),
   ]);
 
   console.log('› Platform: superadmin…');
@@ -409,6 +410,41 @@ async function main() {
     data: { tenantId: novaId, title: 'Nova Learning', subTitle: 'A smaller, separately-branded tenant used to prove multi-tenant isolation.', image: img('banner_img.png') },
   });
 
+  // ───────────────────────────────────────────────────────────
+  //  Demo staff accounts — extra logins for the demo environment.
+  //  3 workspace staff for Acme, 1 for Nova, 1 platform-tier
+  //  (super admin, tenantId stays null). Idempotent: an email that
+  //  already exists is skipped rather than duplicated.
+  // ───────────────────────────────────────────────────────────
+  console.log('› Demo staff accounts…');
+  const staffPass = await argon2.hash('password');
+  const staffSeeds: Array<{
+    name: string;
+    email: string;
+    role: 'admin' | 'super_admin';
+    tenantId: number | null;
+  }> = [
+    { name: 'Acme Support', email: 'support@acme.test', role: 'admin', tenantId: acmeId },
+    { name: 'Acme Ops', email: 'ops@acme.test', role: 'admin', tenantId: acmeId },
+    { name: 'Acme Content', email: 'content@acme.test', role: 'admin', tenantId: acmeId },
+    { name: 'Nova Support', email: 'support@nova.test', role: 'admin', tenantId: novaId },
+    { name: 'Platform Ops', email: 'ops@platform.test', role: 'super_admin', tenantId: null },
+  ];
+  for (const s of staffSeeds) {
+    const existing = await prisma.admin.findUnique({ where: { email: s.email } });
+    if (existing) continue;
+    await prisma.admin.create({
+      data: {
+        name: s.name,
+        email: s.email,
+        password: staffPass,
+        role: s.role,
+        tenantId: s.tenantId,
+        image: img('footer_logo.png'),
+      },
+    });
+  }
+
   console.log('› Platform: website leads…');
   const leadSeeds: Array<{
     name: string; email: string; company?: string; phone?: string;
@@ -502,6 +538,7 @@ async function main() {
     nova: { tenantId: novaId, admin: 'admin@nova.test / password', courses: 1 },
     leads: leadSeeds.length,
     resellers: resellerSeeds.length,
+    staff: staffSeeds.map((s) => `${s.email} / password`),
   });
 }
 

@@ -4,13 +4,14 @@ import {
   ConflictException,
   Controller,
   Get,
-  Inject,
   Injectable,
+  Inject,
   Module,
   NotFoundException,
   Param,
   ParseIntPipe,
   Post,
+  Query,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { IsEmail, IsInt, IsOptional, IsString, MinLength } from 'class-validator';
@@ -24,6 +25,24 @@ import { TenantStatusCache } from '../common/tenant-status-cache.service';
 import { AuditService } from '../audit/audit.service';
 
 const slug = (t: string) => slugify(t, { lower: true, strict: true });
+
+/** Zero-filled array of ISO day strings, oldest first, ending today. */
+function lastNDays(n: number): string[] {
+  const days: string[] = [];
+  const now = new Date();
+  for (let i = n - 1; i >= 0; i--) {
+    const d = new Date(now);
+    d.setDate(d.getDate() - i);
+    days.push(d.toISOString().slice(0, 10));
+  }
+  return days;
+}
+
+/** % change; 0→positive reads as +100%, 0→0 as 0%. */
+function pctChange(curr: number, prev: number): number {
+  if (prev === 0) return curr > 0 ? 100 : 0;
+  return ((curr - prev) / prev) * 100;
+}
 
 class CreateTenantDto {
   @IsString() tenantName!: string;
@@ -178,6 +197,98 @@ export class TenantsService {
       gmv: revenue._sum.paidAmount ?? 0,
     };
   }
+
+  /**
+   * Platform-wide revenue figures for the Superadmin revenue page.
+   * Currency conventions match the domain: plan.priceMonthly is stored in
+   * minor units (cents) and reported divided by 100, while order /
+   * payout amounts are major units. Everything is an at-request-time
+   * aggregate — no cached or mocked totals.
+   */
+  async revenue(days = 30) {
+    const range = lastNDays(Math.min(Math.max(days, 1), 365));
+    const since = new Date(range[0]);
+
+    const [gmv, orders, approvedInWindow, approvedBefore, mrrNow, mrrPrev, plans, reseller, withdraws] =
+      await Promise.all([
+        // GMV + approved-order count — all time.
+        this.raw.order.aggregate({ where: { status: 'approved' }, _sum: { paidAmount: true }, _count: { _all: true } }),
+        // Total approved orders, for the KPI card.
+        this.raw.order.count({ where: { status: 'approved' } }),
+        // Approved orders in the visible window, bucketed per day for the chart.
+        this.raw.order.findMany({
+          where: { status: 'approved', createdAt: { gte: since } },
+          select: { createdAt: true, paidAmount: true },
+        }),
+        // Approved orders before the window — for the trend % change.
+        this.raw.order.aggregate({
+          where: { status: 'approved', createdAt: { lt: since } },
+          _sum: { paidAmount: true },
+        }),
+        // Active subscriptions now vs. as of the window start — MRR trend.
+        this.raw.subscription.findMany({
+          where: { status: 'active' },
+          select: { createdAt: true, plan: { select: { name: true, priceMonthly: true } } },
+        }),
+        this.raw.subscription.findMany({
+          where: { status: 'active', createdAt: { lt: since } },
+          select: { plan: { select: { name: true, priceMonthly: true } } },
+        }),
+        // Plan catalogue for the mix table (counts come from active subs).
+        this.raw.plan.findMany({
+          select: { name: true, priceMonthly: true },
+          orderBy: { priceMonthly: 'desc' },
+        }),
+        // Reseller commission payouts, grouped by settlement status.
+        this.raw.resellerPayout.groupBy({ by: ['status'], _sum: { amount: true } }),
+        // Instructor withdrawals: paid = approved.
+        this.raw.withdraw.groupBy({ by: ['status'], _sum: { amount: true } }),
+      ]);
+
+    const mrrMinor = mrrNow.reduce((n, s) => n + (s.plan?.priceMonthly ?? 0), 0);
+    const mrrPrevMinor = mrrPrev.reduce((n, s) => n + (s.plan?.priceMonthly ?? 0), 0);
+
+    // Daily GMV buckets for the trend chart.
+    const buckets = new Map<string, number>(range.map((d) => [d, 0]));
+    for (const o of approvedInWindow) {
+      const key = o.createdAt.toISOString().slice(0, 10);
+      buckets.set(key, (buckets.get(key) ?? 0) + o.paidAmount);
+    }
+
+    const activeByPlan = new Map<string, number>();
+    for (const s of mrrNow) {
+      if (s.plan) activeByPlan.set(s.plan.name, (activeByPlan.get(s.plan.name) ?? 0) + 1);
+    }
+
+    const resellerByStatus = new Map(reseller.map((g) => [String(g.status), g._sum.amount ?? 0]));
+    const withdrawByStatus = new Map(withdraws.map((g) => [String(g.status), g._sum.amount ?? 0]));
+
+    return {
+      mrr: mrrMinor / 100,
+      gmv: gmv._sum.paidAmount ?? 0,
+      orders,
+      trends: {
+        mrr: pctChange(mrrMinor / 100, mrrPrevMinor / 100),
+        gmv: pctChange(gmv._sum.paidAmount ?? 0, approvedBefore._sum.paidAmount ?? 0),
+      },
+      revenueByDay: range.map((date) => ({ date, amount: buckets.get(date) ?? 0 })),
+      revenueByPlan: plans.map((p) => ({
+        name: p.name,
+        workspaces: activeByPlan.get(p.name) ?? 0,
+        mrr: ((activeByPlan.get(p.name) ?? 0) * p.priceMonthly) / 100,
+      })),
+      payouts: {
+        resellers: {
+          pending: resellerByStatus.get('pending') ?? 0,
+          paid: resellerByStatus.get('paid') ?? 0,
+        },
+        instructors: {
+          pending: withdrawByStatus.get('pending') ?? 0,
+          paid: withdrawByStatus.get('approved') ?? 0,
+        },
+      },
+    };
+  }
 }
 
 @ApiTags('tenants')
@@ -223,6 +334,12 @@ export class PlatformController {
   @Get('stats')
   stats() {
     return this.tenants.platformStats();
+  }
+
+  @Get('revenue')
+  revenue(@Query('days') days?: string) {
+    const parsed = Number(days);
+    return this.tenants.revenue(Number.isFinite(parsed) && parsed > 0 ? parsed : 30);
   }
 }
 

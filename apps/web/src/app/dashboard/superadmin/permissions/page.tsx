@@ -18,7 +18,7 @@ interface PermissionRow {
 }
 
 const MATRIX: PermissionRow[] = [
-  { area: 'Platform', permission: 'Create / delete tenants (sub-accounts)', superadmin: 'yes', admin: 'no', instructor: 'no', student: 'no' },
+  { area: 'Platform', permission: 'Create / delete tenants', superadmin: 'yes', admin: 'no', instructor: 'no', student: 'no' },
   { area: 'Platform', permission: 'Plans, pricing & platform revenue', superadmin: 'yes', admin: 'no', instructor: 'no', student: 'no' },
   { area: 'Platform', permission: 'Create / remove admins & assign roles', superadmin: 'yes', admin: 'no', instructor: 'no', student: 'no' },
   { area: 'Platform', permission: 'White label: brand, custom domain, defaults', superadmin: 'yes', admin: 'partial', instructor: 'no', student: 'no' },

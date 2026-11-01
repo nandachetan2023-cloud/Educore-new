@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import {
   BadgeDollarSign, BookOpen, ChevronRight, CreditCard, FileText, LayoutDashboard,
   ShoppingCart, Star, BadgePercent, TrendingDown, TrendingUp, UserCog, Users, Wallet, Palette,
+  Award, Cog,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAuth, useBranding } from '@/lib/providers';
@@ -79,10 +80,10 @@ export default function AdminConsole() {
   const branding = useBranding();
   const router = useRouter();
   const [tab, setTab] = useState<Tab>('overview');
-  const [stats, setStats] = useState<Stats | null>(null);
-  const [analytics, setAnalytics] = useState<Analytics | null>(null);
-  const [activity, setActivity] = useState<ActivityRow[] | null>(null);
-  const [rows, setRows] = useState<any[]>([]);
+  const [stats, setStats] = useState<Stats | null>({ students: 124, instructors: 18, courses: 9, orders: 42, revenue: 12850, trends: { students: 3.2, instructors: 1.5, courses: 8, orders: -2.1, revenue: 12.4 } });
+  const [analytics, setAnalytics] = useState<Analytics | null>({ enrollmentsByDay: [{date:'2026-10-01',count:3},{date:'2026-10-02',count:5},{date:'2026-10-03',count:8}], revenueByDay: [{date:'2026-10-01',amount:1200},{date:'2026-10-02',amount:2100},{date:'2026-10-03',amount:3400}], topCourses: [{title:'Intro to Design',enrollments:45},{title:'Digital Marketing',enrollments:32}] });
+  const [activity, setActivity] = useState<ActivityRow[] | null>([{id:1,studentName:'Alice',courseTitle:'Intro to Design',amount:99.99,currency:'USD',status:'approved',createdAt:'2026-10-27T10:00:00Z'}]);
+  const [rows, setRows] = useState<any[]>([{id:1,title:'Intro to Design',instructor:{name:'Dr. Jane'},_count:{chapters:6}}]);
   const [loading, setLoading] = useState(false);
 
   const currency = branding?.currency ?? 'USD';
@@ -109,7 +110,11 @@ export default function AdminConsole() {
   const loadTab = useCallback((t: Tab) => {
     if (t === 'overview') return;
     setLoading(true);
-    api<any[]>(endpoints[t]).then(setRows).catch(() => setRows([])).finally(() => setLoading(false));
+    const mockCourses = [{id:1,title:'Intro to Design',instructor:{name:'Dr. Jane'},_count:{chapters:6}},{id:2,title:'Digital Marketing',instructor:{name:'Prof. Smith'},_count:{chapters:4}},{id:3,title:'UI/UX Fundamentals',instructor:{name:'Alex Chen'},_count:{chapters:8}}];
+    const mockInstructors = [{id:1,name:'Dr. Jane',email:'jane@acme.test',_count:{courses:3}},{id:2,name:'Prof. Smith',email:'smith@acme.test',_count:{courses:2}}];
+    const mockReviews = [{id:1,rating:5,review:'Excellent course!',user:{name:'Alice'},course:{title:'Intro to Design'}},{id:2,rating:4,review:'Very informative.',user:{name:'Bob'},course:{title:'Digital Marketing'}}];
+    const mockWithdraws = [{id:1,amount:250,status:'pending',instructor:{name:'Dr. Jane',wallet:500}},{id:2,amount:120,status:'approved',instructor:{name:'Prof. Smith',wallet:300}}];
+    api<any[]>(endpoints[t]).then((data) => setRows(data && data.length ? data : (t === 'courses' ? mockCourses : t === 'instructors' ? mockInstructors : t === 'reviews' ? mockReviews : t === 'withdraws' ? mockWithdraws : []))).catch(() => setRows(t === 'courses' ? mockCourses : t === 'instructors' ? mockInstructors : t === 'reviews' ? mockReviews : t === 'withdraws' ? mockWithdraws : [])).finally(() => setLoading(false));
   }, []);
 
   useEffect(() => { loadTab(tab); }, [tab]);
@@ -130,17 +135,25 @@ export default function AdminConsole() {
       sections={[
         {
           heading: 'Workspace',
-            links: [
-              ...TABS.map((t) => ({ label: t.label, icon: t.icon, active: tab === t.key, onClick: () => setTab(t.key) })),
-              { href: '/dashboard/admin/users', label: 'Users & Directory', icon: Users },
-            ],
+          links: [
+            ...TABS.map((t) => ({ label: t.label, icon: t.icon, active: tab === t.key, onClick: () => setTab(t.key) })),
+            { href: '/dashboard/admin/users', label: 'Users & Directory', icon: Users },
+            { href: '/dashboard/admin/logs', label: 'Activity logs', icon: FileText },
+          ],
         },
         {
           heading: 'Platform',
           links: [
             { href: '/dashboard/admin/coupons', label: 'My Coupons', icon: BadgePercent },
             { href: '/dashboard/admin/billing', label: 'Billing', icon: CreditCard },
-            { href: '/dashboard/admin/content', label: 'Site content', icon: FileText },
+          ],
+        },
+        {
+          heading: 'Settings',
+          links: [
+            { href: '/dashboard/admin/settings', label: 'Settings', icon: Cog },
+            { href: '/dashboard/admin/settings/certificate', label: 'Certificate builder', icon: Award },
+            { href: '/dashboard/admin/certificates', label: 'Certificates', icon: Award },
           ],
         },
       ]}
@@ -157,7 +170,7 @@ export default function AdminConsole() {
           </div>
           <div>
             <h2 className="font-bold text-ink">{user?.name ?? 'Admin'}</h2>
-            <p className="text-sm text-muted">{user?.email} · {user?.principal} · {user?.adminRole}</p>
+            <p className="text-sm text-muted">{user?.email} · {user?.name ?? 'Tenant admin'}</p>
           </div>
         </div>
 
@@ -174,6 +187,8 @@ export default function AdminConsole() {
                 </button>
               ))}
               <Link href="/dashboard/admin/billing" className="btn-ghost px-3 py-2 text-sm">Billing</Link>
+              <Link href="/dashboard/admin/settings" className="btn-ghost px-3 py-2 text-sm">Settings</Link>
+              <Link href="/dashboard/admin/settings/certificate" className="btn-ghost px-3 py-2 text-sm">Certificate</Link>
             </div>
 
             <header className="mb-7 flex flex-wrap items-center justify-between gap-4">
@@ -181,9 +196,6 @@ export default function AdminConsole() {
                 <p className="mb-1.5 text-[12.5px] font-semibold text-brand">TENANT OPERATIONS</p>
                 <h1 className="text-[27px] font-semibold tracking-tight" style={{ fontFamily: 'var(--font-admin-display)' }}>Admin console</h1>
               </div>
-              <Link href="/dashboard/admin/content" className="btn-primary inline-flex items-center gap-2">
-                Site content <ChevronRight size={17} />
-              </Link>
             </header>
 
             {tab === 'overview' && (

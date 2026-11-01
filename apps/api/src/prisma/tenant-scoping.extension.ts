@@ -28,6 +28,7 @@ export const TENANT_SCOPED_MODELS = [
   'Review',
   'CertificateBuilder',
   'CertificateBuilderItem',
+  'Certificate',
   'MailQueueJob',
   'Setting',
   'Hero',
@@ -87,14 +88,18 @@ export function tenantScopingExtension(getTenantId: () => number | null | undefi
 
             const a = args as Record<string, unknown>;
 
+            if (tenantId != null && tenantId <= 0) {
+              throw new Error(`tenant-scoping: invalid tenantId ${tenantId} for model ${model}`);
+            }
+
             if (READ_OPS.has(operation) || WRITE_WHERE_OPS.has(operation)) {
               a.where = { ...(a.where as object | undefined), tenantId };
             } else if (operation === 'findUnique' || operation === 'findUniqueOrThrow') {
-              // findUnique only accepts genuinely-unique selectors; a bare tenantId
-              // filter here would be rejected by Prisma. Callers that need a
-              // tenant-safe unique lookup should query by a compound
-              // (tenantId, <field>) unique index, or use findFirst instead.
-              return query(args);
+              // Inject tenantId into findUnique where for tenant-scoped models.
+              // Callers should use a compound unique index (tenantId, <field>) where possible;
+              // otherwise Prisma will throw and the caller should use findFirst.
+              a.where = { ...(a.where as object | undefined), tenantId };
+              return query(a as typeof args);
             } else if (operation === 'create') {
               a.data = { ...(a.data as object | undefined), tenantId };
             } else if (operation === 'createMany') {

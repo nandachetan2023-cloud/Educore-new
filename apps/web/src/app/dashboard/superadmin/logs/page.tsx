@@ -16,6 +16,7 @@ interface AuditRow {
   meta?: Record<string, unknown>;
   ip?: string;
   createdAt: string;
+  tenantId?: number | null;
 }
 
 const ACTION_TONE: { prefix: string; cls: string }[] = [
@@ -74,13 +75,14 @@ export default function LogsPage() {
         <section className="mt-5 overflow-hidden rounded-2xl border border-line bg-card shadow-sm">
           <table className="w-full text-left text-sm">
             <thead className="border-b border-line text-[11px] uppercase tracking-wider text-muted">
-              <tr>
-                <th className="px-5 py-3">Time</th>
-                <th className="px-5 py-3">Actor</th>
-                <th className="px-5 py-3">Action</th>
-                <th className="px-5 py-3">Entity</th>
-                <th className="px-5 py-3">Details</th>
-              </tr>
+                <tr>
+                  <th className="px-5 py-3">Time</th>
+                  <th className="px-5 py-3">Actor</th>
+                  <th className="px-5 py-3">Action</th>
+                  <th className="px-5 py-3">Tenant</th>
+                  <th className="px-5 py-3">Entity</th>
+                  <th className="px-5 py-3">Details</th>
+                </tr>
             </thead>
             <tbody className="divide-y divide-line">
               {visible.map((r) => (
@@ -90,16 +92,25 @@ export default function LogsPage() {
                     <span className="block font-semibold text-ink">{r.actorName ?? 'System'}</span>
                     <span className="block text-[11px] text-muted">{r.actorRole ?? r.actorType}</span>
                   </td>
-                  <td className="px-5 py-3"><span className={`badge ${tone(r.action)}`}>{r.action}</span></td>
-                  <td className="px-5 py-3 text-xs text-muted">{r.entity}{r.entityId ? ` #${r.entityId}` : ''}</td>
-                  <td className="max-w-[280px] truncate px-5 py-3 text-xs text-muted">
-                    {r.meta ? JSON.stringify(r.meta) : '—'}
-                    {r.ip ? ` · ${r.ip}` : ''}
-                  </td>
+                   <td className="px-5 py-3">
+                     <span className={`badge ${tone(r.action)}`}>{r.action}</span>
+                   </td>
+                   <td className="px-5 py-3">
+                     {(r.tenantId ?? r.actorType === 'system') ? (
+                       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-brand-soft text-brand">
+                         {r.tenantId ? `Workspace ${r.tenantId}` : 'Platform'}
+                       </span>
+                     ) : '—'}
+                   </td>
+                   <td className="px-5 py-3 text-xs text-muted">{r.entity}{r.entityId ? ` #${r.entityId}` : ''}</td>
+                   <td className="max-w-[280px] truncate px-5 py-3 text-xs text-muted">
+                     {r.meta ? JSON.stringify(r.meta) : '—'}
+                     {r.ip ? ` · ${r.ip}` : ''}
+                   </td>
                 </tr>
               ))}
               {rows?.length === 0 && (
-                <tr><td colSpan={5} className="px-5 py-12 text-center text-muted">No audit events recorded yet.</td></tr>
+                <tr><td colSpan={6} className="px-5 py-12 text-center text-muted">No audit events recorded yet.</td></tr>
               )}
             </tbody>
           </table>

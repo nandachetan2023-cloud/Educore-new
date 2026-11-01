@@ -84,6 +84,56 @@ export interface PlatformStats {
   gmv: number;
 }
 
+export interface PlatformRevenue {
+  mrr: number;
+  gmv: number;
+  orders: number;
+  trends: { mrr: number; gmv: number };
+  revenueByDay: { date: string; amount: number }[];
+  revenueByPlan: { name: string; workspaces: number; mrr: number }[];
+  payouts: {
+    resellers: { pending: number; paid: number };
+    instructors: { pending: number; paid: number };
+  };
+}
+
+export interface PlatformEnv {
+  app: { env: string; nodeVersion: string; uptimeSeconds: number; apiPort: number; apiUrl: string; webUrl: string };
+  payments: {
+    courseCheckout: {
+      stripe: { configured: boolean; mode: string; masked: string };
+      razorpay: { enabled: boolean; keyId: string };
+      paypal: { configured: boolean; mode: string; masked: string };
+    };
+    platformBillingWebhook: { configured: boolean; masked: string };
+  };
+  mail: { configured: boolean; host: string; from: string; port: number };
+  storage: { driver: string; s3: { configured: boolean; bucket: string } };
+  oauth: { callbackBase: string; google: { configured: boolean }; github: { configured: boolean } };
+}
+
+export interface PlatformSettingsValues {
+  supportEmail: string;
+  currency: string;
+  commissionRate: number;
+  defaultLanguage: string;
+  overridden: string[];
+}
+
+export interface AuditLogEntry {
+  id: number;
+  action: string;
+  actorName?: string | null;
+  actorEmail?: string | null;
+  actorRole?: string | null;
+  entity?: string | null;
+  entityId?: number | null;
+  meta?: Record<string, unknown> | null;
+  ipAddress?: string | null;
+  tenantId?: number | null;
+  createdAt: string;
+}
+
 export interface TenantRow {  id: number;
   name: string;
   slug: string;
@@ -166,6 +216,8 @@ export interface Coupon {
   startsAt?: string | null;
   endsAt?: string | null;
   status: boolean;
+  deactivateAt?: string | null;
+  approvalStatus?: string | null;
   createdAt: string;
   updatedAt: string;
   _count?: { redemptions: number };

@@ -1,7 +1,7 @@
 import { Body, Controller, Get, Post } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
-import { RegisterDto, LoginDto, RefreshDto } from './dto';
+import { RegisterDto, LoginDto, RefreshDto, ForgotPasswordDto, ResetPasswordDto } from './dto';
 import { Public, CurrentUser, AuthPrincipal } from '../common/decorators';
 import { Principal } from '../common/enums';
 
@@ -33,6 +33,18 @@ export class AuthController {
   @Post('refresh')
   refresh(@Body() dto: RefreshDto) {
     return this.auth.refresh(dto.refreshToken);
+  }
+
+  @Public()
+  @Post('forgot-password')
+  forgotPassword(@Body() dto: ForgotPasswordDto) {
+    return this.auth.forgotPassword(dto.email, dto.role);
+  }
+
+  @Public()
+  @Post('reset-password')
+  resetPassword(@Body() dto: ResetPasswordDto) {
+    return this.auth.resetPassword(dto.token, dto.password);
   }
 
   @Get('me')

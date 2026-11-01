@@ -104,7 +104,7 @@ export default function TenantsPage() {
       </div>
 
       <form onSubmit={create} className="mt-6 rounded-2xl border border-line bg-card p-6 shadow-sm sm:p-8">
-        <h2 className="flex items-center gap-2 text-lg font-bold text-ink"><Building2 className="h-5 w-5 text-brand" /> Sell a new sub-account</h2>
+        <h2 className="flex items-center gap-2 text-lg font-bold text-ink"><Building2 className="h-5 w-5 text-brand" /> Sell a new tenant</h2>
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
           <div>
             <label className="label">Workspace / brand name</label>
@@ -134,7 +134,7 @@ export default function TenantsPage() {
         </div>
         {msg && <p className="mt-3 text-sm font-medium text-green-600">{msg}</p>}
         <button disabled={busy || plans.length === 0} className="btn-primary mt-4 rounded-full px-8">
-          <Plus className="h-4 w-4" /> {busy ? 'Creating…' : 'Create sub-account'}
+          <Plus className="h-4 w-4" /> {busy ? 'Creating…' : 'Create tenant'}
         </button>
       </form>
     </SuperAdminShell>

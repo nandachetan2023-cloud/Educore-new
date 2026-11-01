@@ -205,12 +205,7 @@ export default function AdminCouponsPage() {
                 automatically. Exactly one promotion is honoured per order — whichever saves the buyer more.
               </p>
             </div>
-            <button
-              onClick={() => (tab === 'coupons' ? setEditing('new') : setEditingOffer('new'))}
-              className="btn-primary inline-flex items-center gap-2"
-            >
-              <Plus size={17} /> {tab === 'coupons' ? 'New coupon' : 'New offer'}
-            </button>
+            <div className="text-sm text-muted">Super Admin can view all coupons and schedule future deactivation only. Creation and editing are Admin-only.</div>
           </header>
 
           {msg && <p className="mb-4 rounded-xl bg-brand-soft px-4 py-2.5 text-sm font-medium text-brand">{msg}</p>}
@@ -246,10 +241,6 @@ export default function AdminCouponsPage() {
                 coupons={coupons}
                 courses={courses}
                 fmt={fmt}
-                onNew={() => setEditing('new')}
-                onEdit={setEditing}
-                onToggle={toggleCoupon}
-                onRemove={removeCoupon}
                 onRedemptions={showRedemptions}
               />
             ) : (
@@ -281,15 +272,11 @@ export default function AdminCouponsPage() {
 /* ─── Tables ─────────────────────────────────────────────────────────────── */
 
 function CouponTable({
-  coupons, courses, fmt, onNew, onEdit, onToggle, onRemove, onRedemptions,
+  coupons, courses, fmt, onRedemptions,
 }: {
   coupons: Coupon[];
   courses: CourseOption[];
   fmt: (n: number) => string;
-  onNew: () => void;
-  onEdit: (c: Coupon) => void;
-  onToggle: (id: number, status: boolean) => void;
-  onRemove: (id: number) => void;
   onRedemptions: (c: Coupon) => void;
 }) {
   const titleOf = useMemo(() => {
@@ -298,7 +285,7 @@ function CouponTable({
   }, [courses]);
 
   if (coupons.length === 0) {
-    return <EmptyState icon={<BadgePercent size={22} />} title="No coupons yet" body="Create a code like WELCOME10 and shoppers can redeem it in the cart." actionLabel="Create your first coupon" onAction={onNew} />;
+    return <EmptyState icon={<BadgePercent size={22} />} title="No coupons yet" body="Admins create coupons for their workspaces. No coupons exist to manage." actionLabel="Refresh" onAction={() => window.location.reload()} />;
   }
 
   return (
@@ -349,19 +336,21 @@ function CouponTable({
                   </button>
                 )}
               </td>
-              <td className="px-5 py-4">
-                <button
-                  onClick={() => onToggle(c.id, !c.status)}
-                  className={`badge ${c.status ? 'bg-green-500/15 text-green-600' : 'bg-line text-muted'}`}
-                >
-                  {c.status ? 'Active' : 'Paused'}
-                </button>
+              <td className="px-5 py-4 text-xs text-muted">
+                {c.deactivateAt ? `Scheduled off ${new Date(c.deactivateAt).toLocaleString()}` : 'No schedule'}
+                <p className={`mt-1 text-[11px] ${c.status ? 'text-green-600' : 'text-muted'}`}>{c.status ? 'Active' : 'Paused'}</p>
               </td>
               <td className="px-5 py-4 text-right">
-                <button onClick={() => onEdit(c)} className="text-sm text-brand hover:underline">Edit</button>
-                <button onClick={() => onRemove(c.id)} className="ml-3 text-sm text-red-500 hover:underline">
-                  <Trash2 size={15} className="inline" />
-                </button>
+                {c.deactivateAt ? (
+                  <button onClick={async () => { await api(`/superadmin/coupons/${c.id}/reactivate`, { method: 'PATCH' }); window.location.reload(); }} className="text-sm text-brand hover:underline">Reactivate</button>
+                ) : (
+                  <button onClick={async () => {
+                    const when = prompt('Deactivate at (ISO, e.g. 2026-12-01T10:00:00Z):');
+                    if (!when) return;
+                    try { await api(`/superadmin/coupons/${c.id}/deactivate`, { method: 'PATCH', body: JSON.stringify({ at: when }) }); window.location.reload(); }
+                    catch (e:any) { alert(e.message ?? 'Failed'); }
+                  }} className="text-sm text-amber-600 hover:underline">Schedule deactivate</button>
+                )}
               </td>
             </tr>
           ))}

@@ -33,6 +33,12 @@ export class AuthService {
   // until Host-based resolution (Phase 4) lands, callers must send the dev
   // `X-Tenant-Id` header. ──
   async register(dto: RegisterDto) {
+    if (dto.password !== dto.confirmPassword) {
+      throw new Error('Passwords do not match');
+    }
+    if (!dto.termsAccepted) {
+      throw new Error('Terms must be accepted');
+    }
     const existing = await this.prisma.user.findFirst({
       where: { email: dto.email },
     });
@@ -138,6 +144,38 @@ export class AuthService {
     if (status === 'suspended') {
       throw new TenantSuspendedException();
     }
+  }
+
+  async forgotPassword(email: string, role: 'user' | 'admin') {
+    const token = Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2);
+    const expires = new Date(Date.now() + 1000 * 60 * 60); // 1 hour
+    if (role === 'admin') {
+      const admin = await this.raw.admin.findUnique({ where: { email } });
+      if (!admin) return { ok: true };
+      await this.raw.admin.update({ where: { id: admin.id }, data: { passwordResetToken: token, passwordResetExpires: expires } });
+    } else {
+      const user = await this.prisma.user.findFirst({ where: { email } });
+      if (!user) return { ok: true };
+      await this.raw.user.update({ where: { id: user.id }, data: { passwordResetToken: token, passwordResetExpires: expires } });
+    }
+    // In real app, send email with token link. For now return token for testing.
+    return { ok: true, token };
+  }
+
+  async resetPassword(token: string, password: string) {
+    const user = await this.raw.user.findFirst({ where: { passwordResetToken: token, passwordResetExpires: { gt: new Date() } } });
+    if (user) {
+      const hash = await argon2.hash(password);
+      await this.raw.user.update({ where: { id: user.id }, data: { password: hash, passwordResetToken: null, passwordResetExpires: null } });
+      return { ok: true };
+    }
+    const admin = await this.raw.admin.findFirst({ where: { passwordResetToken: token, passwordResetExpires: { gt: new Date() } } });
+    if (admin) {
+      const hash = await argon2.hash(password);
+      await this.raw.admin.update({ where: { id: admin.id }, data: { password: hash, passwordResetToken: null, passwordResetExpires: null } });
+      return { ok: true };
+    }
+    throw new UnauthorizedException('Invalid or expired reset token');
   }
 
   async me(user: AuthPrincipal) {    if (user.principal === Principal.ADMIN) {

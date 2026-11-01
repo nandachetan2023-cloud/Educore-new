@@ -87,10 +87,20 @@ npm run db:seed
 ```
 
 The seed creates:
-- A **super admin** account  
 - Sample categories, levels, and languages
+- The default accounts below
 
-> Check `apps\api\prisma\seed.ts` for the seeded admin email/password.
+### Default accounts
+
+| Role | Email | Password | Notes |
+|------|-------|----------|-------|
+| Super Admin | `superadmin@gmail.com` | `password` | Tick "Log in as administrator" |
+| Admin | `admin@gmail.com` | `password` | Tick "Log in as administrator" |
+| Instructor | `instructor@gmail.com` | `12345678` | Instructor dashboard |
+| Student | `user@gmail.com` | `12345678` | Student dashboard |
+
+> These are demo credentials from `apps\api\prisma\seed.ts`. Change or remove
+> them before going live. They are intentionally not shown on the login page.
 
 ---
 
@@ -100,8 +110,8 @@ The seed creates:
 
 | File | What it does |
 |------|-------------|
-| `start.bat` | Builds both apps then starts them (production mode) |
-| `start-dev.bat` | Starts both in dev mode with hot-reload (no build step) |
+| `educore-setup.bat` | Installs prerequisites, sets up the DB, builds both apps and starts them |
+| `educore-diag.bat` | Prints a health report (versions, env files, ports, API health) |
 
 ### Option B — Manual (two terminals)
 
@@ -123,9 +133,9 @@ npm run dev
 
 | URL | Description |
 |-----|-------------|
-| `http://localhost:3000` | Student-facing website |
-| `http://localhost:3000/login` | Login (check "Log in as administrator" for admin) |
-| `http://localhost:3000/register` | Register a new student account |
+| `http://localhost:3004` | Student-facing website |
+| `http://localhost:3004/login` | Login (check "Log in as administrator" for admin) |
+| `http://localhost:3004/register` | Register a new student account |
 | `http://localhost:4000/api` | API base URL |
 | `http://localhost:4000/api/docs` | Swagger API documentation |
 
@@ -133,7 +143,7 @@ npm run dev
 
 ## 7. First login (admin)
 
-1. Go to `http://localhost:3000/login`
+1. Go to `http://localhost:3004/login`
 2. Check **"Log in as administrator"**
 3. Use the credentials from `apps\api\prisma\seed.ts`
 4. You'll land on the admin console at `/dashboard/admin`
@@ -156,6 +166,30 @@ From the admin console you can:
 | `npm run db:migrate` | Run Prisma migrations |
 | `npm run db:seed` | Seed initial data |
 | `npm run db:studio` | Open Prisma Studio (DB browser) |
+
+---
+
+## Running on a client / LAN server
+
+Run `educore-setup.bat` on the machine that will host the app. When it asks
+**"Will other machines access this server?"**, answer **Y** (or pre-set the
+address with `set EDUCORE_HOST=192.168.1.50` or a domain before running).
+The script then:
+
+- detects the server's LAN IP and writes `API_URL`, `WEB_URL` and
+  `OAUTH_CALLBACK_BASE` into the root `.env`
+- writes the matching `API_URL` into `apps\web\.env.local`
+- opens inbound firewall ports `3004` (web) and `4000` (API) when run as
+  Administrator
+- prints the address clients should use, e.g. `http://192.168.1.50:3004`
+
+From another machine open `http://<server-ip>:3004`. If it does not load,
+allow TCP `3004` and `4000` in Windows Firewall and confirm both machines are
+on the same network. Run `educore-diag.bat` on the server to check ports,
+build output and API health.
+
+> Use a static IP or DNS name. Uploaded files and OAuth redirects are built
+> from `API_URL`, so changing the server IP later breaks those links.
 
 ---
 

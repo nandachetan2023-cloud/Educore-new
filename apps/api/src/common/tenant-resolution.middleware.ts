@@ -36,7 +36,9 @@ export class TenantResolutionMiddleware implements NestMiddleware {
   constructor(@Inject(RAW_PRISMA) private raw: PrismaClient) {}
 
   async use(req: Request, _res: Response, next: NextFunction) {
-    const host = (req.headers['x-tenant-domain'] as string | undefined) || req.hostname;
+    const isProd = process.env.NODE_ENV === 'production';
+    const headerHost = req.headers['x-tenant-domain'] as string | undefined;
+    const host = (!isProd && headerHost) ? headerHost : req.hostname;
     if (host) {
       const key = host.toLowerCase();
       let tenant = this.cache.get<{ id: number } | null>(key);

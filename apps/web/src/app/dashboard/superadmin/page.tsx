@@ -163,7 +163,7 @@ export default function SuperadminOverview() {
             <CreditCard className="h-4 w-4" /> Plans
           </Link>
           <Link href="/dashboard/superadmin/tenants" className="btn-primary rounded-full text-sm">
-            <Plus className="h-4 w-4" /> New sub-account
+            <Plus className="h-4 w-4" /> New tenant
           </Link>
         </div>
       </div>
@@ -283,7 +283,7 @@ export default function SuperadminOverview() {
               href="/dashboard/superadmin/tenants"
               className="mt-5 inline-flex items-center gap-1.5 rounded-full bg-white px-5 py-2.5 text-sm font-bold text-brand transition hover:brightness-95"
             >
-              Open sub-accounts <ArrowRight className="h-4 w-4" />
+              Open tenants <ArrowRight className="h-4 w-4" />
             </Link>
           </div>
         </div>

@@ -1,13 +1,15 @@
-import { Body, Controller, Get, Injectable, Module, Put, Res } from '@nestjs/common';
-import { IsArray, IsBoolean, IsIn, IsInt, IsOptional, IsString, Min, ValidateNested } from 'class-validator';
+import { BadRequestException, Body, Controller, Get, Injectable, Module, Param, ParseIntPipe, Put, Query, Res, HttpStatus } from '@nestjs/common';
+import { IsArray, IsBoolean, IsIn, IsInt, IsOptional, IsString, Max, Min, Matches, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiTags } from '@nestjs/swagger';
 import { Response } from 'express';
 import { join } from 'path';
 import PDFDocument from 'pdfkit';
 import { PrismaService } from '../prisma/prisma.service';
-import { Roles, SuperAdmin } from '../common/decorators';
+import { Roles } from '../common/decorators';
 import { Principal } from '../common/enums';
+import { CERTIFICATE_TEMPLATES } from './certificate-templates';
+import { STYLE_DESIGNS, renderDesign } from './certificate-design';
 
 /** Known placeholder tokens the builder canvas can drop onto the certificate. */
 export const CERT_TOKENS = ['studentName', 'courseTitle', 'instructorName', 'date', 'brandName', 'custom'] as const;
@@ -33,8 +35,8 @@ class ItemDto {
   @IsString() xPosition!: string; // percentage of page width, e.g. "50"
   @IsString() yPosition!: string; // percentage of page height, e.g. "40"
   @IsOptional() @IsString() text?: string; // only used when elementId === 'custom'
-  @IsInt() @Min(6) fontSize!: number;
-  @IsString() color!: string;
+  @IsInt() @Min(6) @Max(56) fontSize!: number;
+  @Matches(/^#[0-9a-fA-F]{3}([0-9a-fA-F]{3})?$/, { message: 'color must be a hex value like #1a2b3c' }) color!: string;
   @IsBoolean() bold!: boolean;
 }
 class ItemsDto {
@@ -67,11 +69,52 @@ export class CertificateBuilderService {
   }
 
   async saveItems(items: ItemDto[]) {
+    const clamp = (v: string) => String(Math.min(100, Math.max(0, parseFloat(v) || 0)));
     await this.prisma.$transaction([
       this.prisma.certificateBuilderItem.deleteMany(),
-      this.prisma.certificateBuilderItem.createMany({ data: items }),
+      this.prisma.certificateBuilderItem.createMany({
+        data: items.map((it) => ({ ...it, xPosition: clamp(it.xPosition), yPosition: clamp(it.yPosition) })),
+      }),
     ]);
     return this.prisma.certificateBuilderItem.findMany({ orderBy: { id: 'asc' } });
+  }
+
+  async countItems(): Promise<number> {
+    return this.prisma.certificateBuilderItem.count();
+  }
+
+  /**
+   * The tenant's uploaded digital-signature image (local disk path), used by
+   * every preset-style certificate. Returns null when not configured.
+   */
+  async getSignature(): Promise<string | null> {
+    const builder = await this.prisma.certificateBuilder.findFirst();
+    if (!builder?.signature) return null;
+    try {
+      return this.localPath(builder.signature);
+    } catch {
+      return null;
+    }
+  }
+
+  /** The ten built-in sample templates (name + layout), for the wizard step 1. */
+  listTemplates() {
+    return CERTIFICATE_TEMPLATES.map((t, index) => ({
+      index,
+      name: t.name,
+      builder: t.builder,
+      items: t.items,
+      preview: STYLE_DESIGNS[t.name]?.preview ?? '',
+    }));
+  }
+
+  /** Wizard step 2: replaces the current layout with the chosen template. */
+  async applyTemplate(index: number) {
+    const tpl = CERTIFICATE_TEMPLATES[index];
+    if (!tpl) throw new BadRequestException('Unknown template');
+    await this.save({ ...tpl.builder });
+    const itemsRes = await this.saveItems(tpl.items.map((it) => ({ ...it })));
+    return { builder: tpl.builder, items: itemsRes };
   }
 
   private resolveToken(token: CertToken, custom: string | null | undefined, data: CertData): string {
@@ -85,10 +128,15 @@ export class CertificateBuilderService {
     }
   }
 
-  /** Uploaded images are served from /uploads/<rel>; map the public URL back to its local disk path. */
+  /**
+   * Uploaded images are served from /uploads/<rel>; map the public URL back to
+   * its local disk path. Only same-install `/uploads/` URLs are trusted —
+   * anything else (including traversal like `/uploads/../x`) is rejected.
+   */
   private localPath(publicUrl: string): string {
-    const rel = publicUrl.split(/\/uploads\//).pop();
-    return rel ? join(process.cwd(), 'storage', 'uploads', rel) : publicUrl;
+    const m = /^\/uploads\/([A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*)$/.exec(publicUrl);
+    if (!m || m[1].includes('..')) throw new Error(`Untrusted image path: ${publicUrl}`);
+    return join(process.cwd(), 'storage', 'uploads', m[1]);
   }
 
   /**
@@ -154,7 +202,6 @@ export class CertificateBuilderService {
 @ApiTags('certificate-builder')
 @Controller('admin/certificate-builder')
 @Roles(Principal.ADMIN)
-@SuperAdmin()
 export class CertificateBuilderController {
   constructor(private builder: CertificateBuilderService) {}
 
@@ -173,18 +220,48 @@ export class CertificateBuilderController {
     return this.builder.saveItems(dto.items);
   }
 
+  @Get('templates')
+  templates() {
+    return this.builder.listTemplates();
+  }
+
+  @Put('templates/:index/apply')
+  applyTemplate(@Param('index', ParseIntPipe) index: number) {
+    return this.builder.applyTemplate(index);
+  }
+
   @Get('preview')
-  async preview(@Res() res: Response) {
+  async preview(@Res() res: Response, @Query('style') style?: string) {
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', 'inline; filename="certificate-preview.pdf"');
+
+    // With ?style=<Preset> render that fully designed template (background art included).
+    if (style && STYLE_DESIGNS[style]) {
+      const doc = new PDFDocument({ size: 'A4', layout: 'landscape', margin: 0 });
+      doc.pipe(res);
+      renderDesign(
+        doc,
+        STYLE_DESIGNS[style],
+        { studentName: 'Jordan Sample', courseTitle: 'Sample Course Title', instructorName: 'Instructor Name' },
+        process.env.BRAND_NAME ?? 'EduCore',
+        await this.builder.getSignature(),
+      );
+      doc.end();
+      return;
+    }
+
+    const empty = await this.builder.countItems();
+    if (empty === 0) {
+      res.status(HttpStatus.BAD_REQUEST).json({ message: 'Add at least one element to the canvas before previewing or pass ?style=' });
+      return;
+    }
     const sample: CertData = {
       studentName: 'Jordan Sample',
       courseTitle: 'Sample Course Title',
       instructorName: 'Instructor Name',
       brandName: process.env.BRAND_NAME ?? 'EduCore',
     };
-    const rendered = await this.builder.render(res, sample);
-    if (!rendered) res.end();
+    await this.builder.render(res, sample);
   }
 }
 

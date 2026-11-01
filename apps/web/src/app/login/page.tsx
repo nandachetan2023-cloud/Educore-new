@@ -4,17 +4,16 @@ import { Suspense, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { ArrowRight, Eye, EyeOff, FlaskConical, Lock, Mail } from 'lucide-react';
+
+const DEMO_ACCOUNTS = [
+  { role: 'Super-admin', email: 'superadmin@gmail.com', password: 'password', can: 'Cross-tenant access', admin: true },
+  { role: 'Admin', email: 'admin@gmail.com', password: 'password', can: 'Acme tenant admin', admin: true },
+  { role: 'Instructor', email: 'instructor@gmail.com', password: 'password', can: 'Create & manage courses', admin: false },
+  { role: 'Student', email: 'user@gmail.com', password: 'password', can: 'Enroll & learn', admin: false },
+];
 import { api, tokenStore, ApiError } from '@/lib/api';
 import { useAuth } from '@/lib/providers';
 import { AuthShell, SecureBadges, SocialButtons } from '@/components/auth-panel';
-
-/** Seeded demo accounts (see README + prisma/seed.ts) — click to fill. */
-const DEMO_ACCOUNTS = [
-  { role: 'Super-admin', email: 'superadmin@gmail.com', password: 'password', admin: true, can: 'Everything + rebranding + staff' },
-  { role: 'Admin', email: 'admin@gmail.com', password: 'password', admin: true, can: 'Moderation, approvals' },
-  { role: 'Instructor', email: 'instructor@gmail.com', password: '12345678', admin: false, can: 'Create/sell courses, payouts' },
-  { role: 'Student', email: 'user@gmail.com', password: '12345678', admin: false, can: 'Buy, learn, review' },
-];
 
 function LoginInner() {
   const router = useRouter();

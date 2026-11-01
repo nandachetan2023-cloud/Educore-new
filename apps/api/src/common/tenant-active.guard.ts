@@ -24,15 +24,22 @@ export class TenantActiveGuard implements CanActivate {
       context.getHandler(),
       context.getClass(),
     ]);
-    if (isPublic) return true;
 
     const req = context.switchToHttp().getRequest();
     const user = req.user as AuthPrincipal | undefined;
-    if (!user?.tenantId) return true;
+    const hostTenantId = (req as any).tenantHost?.id as number | undefined;
 
-    const status = await this.tenantStatusCache.getStatus(user.tenantId, async () => {
+    // Determine tenantId to enforce: authenticated principal wins, else host-resolved tenant.
+    const tenantId = user?.tenantId ?? hostTenantId;
+
+    if (!tenantId) return true;
+
+    // Superadmin bypass
+    if (user?.adminRole === 'super_admin') return true;
+
+    const status = await this.tenantStatusCache.getStatus(tenantId, async () => {
       const tenant = await this.raw.tenant.findUnique({
-        where: { id: user.tenantId! },
+        where: { id: tenantId },
         select: { status: true },
       });
       return tenant?.status ?? 'suspended';

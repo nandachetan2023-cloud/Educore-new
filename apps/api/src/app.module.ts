@@ -28,6 +28,7 @@ import { DashboardModule } from './dashboard/dashboard.module';
 import { AdminModule } from './admin/admin.module';
 import { PayoutsModule } from './payouts/payouts.module';
 import { CertificatesModule } from './certificates/certificates.module';
+import { AdminCertificatesModule } from './certificates/admin-certificates.module';
 import { CmsModule } from './cms/cms.module';
 import { BlogModule } from './blog/blog.module';
 import { UploadsModule } from './uploads/uploads.module';
@@ -43,6 +44,7 @@ import { DomainsModule } from './domains/domains.module';
 import { AuditModule } from './audit/audit.module';
 import { ResellersModule } from './resellers/resellers.module';
 import { LeadsModule } from './leads/leads.module';
+import { PlatformSettingsModule } from './platform-settings/platform-settings.module';
 
 @Module({
   imports: [
@@ -59,13 +61,21 @@ import { LeadsModule } from './leads/leads.module';
         setup: (cls, context) => {
           const req = context.switchToHttp().getRequest();
           const user = req.user as AuthPrincipal | undefined;
-          // Priority: authenticated principal's own tenant > a host-resolved
-          // tenant set by tenant-resolution middleware (Phase 4) > a dev-only
-          // header for local testing before Host-based resolution exists.
+          // Priority for workspace admins: authenticated principal's own tenant
+          // > host-resolved tenant from the tenant-resolution middleware (Phase 4) >
+          // a dev-only header used to simulate a tenant before custom domains exist.
+          // The platform superadmin (user.adminRole === 'super_admin') has no
+          // workspace, so its queries must run unscoped regardless of header/host —
+          // otherwise a browsing dev tenant would silently collapse "see all" into "see one".
           const devHeaderRaw = req.headers?.[DEV_TENANT_HEADER];
           const devHeaderId = Number(devHeaderRaw);
           const devTenantId = devHeaderRaw && Number.isFinite(devHeaderId) ? devHeaderId : null;
-          const tenantId = user?.tenantId ?? req.tenantHost?.id ?? devTenantId ?? null;
+          const tenantId =
+            user?.tenantId ??
+            (user?.adminRole === 'super_admin'
+              ? null
+              : req.tenantHost?.id ?? devTenantId) ??
+            null;
           cls.set(TENANT_CLS_KEY, tenantId);
           cls.set(PRINCIPAL_CLS_KEY, user ?? null);
         },
@@ -89,6 +99,7 @@ import { LeadsModule } from './leads/leads.module';
     AdminModule,
     PayoutsModule,
     CertificatesModule,
+    AdminCertificatesModule,
     CmsModule,
     BlogModule,
     UploadsModule,
@@ -104,6 +115,7 @@ import { LeadsModule } from './leads/leads.module';
     AuditModule,
     ResellersModule,
     LeadsModule,
+    PlatformSettingsModule,
   ],
   providers: [
     // Order matters: authenticate, then rate-limit, then authorize by role.

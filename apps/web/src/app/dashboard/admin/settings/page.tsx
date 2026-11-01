@@ -29,10 +29,6 @@ export default function AdminSettingsPage() {
           <div className="font-semibold">Payment configuration</div>
           <div className="mt-1 text-sm text-muted">Set Razorpay keys without redeploying.</div>
         </Link>
-        <Link href="/dashboard/admin/settings/mail" className="card p-5 transition hover:border-brand/40">
-          <div className="font-semibold">Mail configuration</div>
-          <div className="mt-1 text-sm text-muted">Configure SMTP without redeploying.</div>
-        </Link>
         <Link href="/dashboard/admin/settings/files" className="card p-5 transition hover:border-brand/40">
           <div className="font-semibold">File manager</div>
           <div className="mt-1 text-sm text-muted">Browse and remove uploaded files.</div>

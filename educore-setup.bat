@@ -15,6 +15,15 @@ set "API=%ROOT%\apps\api"
 set "WEB=%ROOT%\apps\web"
 set "PRISMA=%ROOT%\node_modules\.bin\prisma.cmd"
 
+:: Deployment origin. Defaults to localhost (single-machine install).
+:: :configure_origins (called in step 2) switches these to the server's
+:: network IP when the app is accessed from other machines - otherwise
+:: uploads, OAuth redirects and links keep pointing at the client's own PC.
+set "HOST=localhost"
+set "SERVER_MODE=0"
+set "API_ORIGIN=http://localhost:4000"
+set "WEB_ORIGIN=http://localhost:3004"
+
 echo.
 echo  =====================================================
 echo    EduCore - Automated Setup ^& Launch
@@ -67,6 +76,7 @@ if not exist "%ROOT%\.env" (
     pause
     exit /b 1
   )
+  call :configure_origins
   echo.
   echo  +-------------------------------------------------+
   echo    ACTION REQUIRED
@@ -91,6 +101,7 @@ if not exist "%ROOT%\.env" (
   exit /b 0
 ) else (
   echo  Root .env exists - skipping.
+  call :configure_origins
 )
 echo.
 
@@ -105,10 +116,17 @@ echo.
 echo [3/10] Checking Web environment file...
 if not exist "%WEB%\.env.local" (
   echo  Creating apps\web\.env.local...
-  echo API_URL=http://localhost:4000> "%WEB%\.env.local"
-  echo  Created.
+  > "%WEB%\.env.local" echo API_URL=!API_ORIGIN!
+  echo  Created ^(API_URL=!API_ORIGIN!^).
 ) else (
-  echo  Web .env.local exists - skipping.
+  call :set_env_key "%WEB%\.env.local" "API_URL" "!API_ORIGIN!"
+  echo  Web .env.local updated ^(API_URL=!API_ORIGIN!^).
+)
+findstr /b "NEXT_PUBLIC_API_URL=" "%WEB%\.env.local" >nul 2>&1
+if not errorlevel 1 (
+  echo  WARNING: apps\web\.env.local sets NEXT_PUBLIC_API_URL.
+  echo  Remove it unless the API has its own public domain - it is baked
+  echo  into the browser bundle and breaks login for remote visitors.
 )
 echo.
 
@@ -232,9 +250,10 @@ echo.
 :: ──────────────────────────────────────────────
 echo [10/10] Starting servers...
 echo.
-start "EduCore API  :4000" cmd /k "cd /d "%ROOT%" && npm run start:api"
+if "%SERVER_MODE%"=="1" call :open_firewall
+start "EduCore API  :4000" /d "%ROOT%" cmd /k "npm run start:api"
 timeout /t 6 /nobreak >nul
-start "EduCore Web  :3004" cmd /k "cd /d "%ROOT%" && npm run start:web"
+start "EduCore Web  :3004" /d "%ROOT%" cmd /k "npm run start:web"
 
 echo  Waiting for the API to become ready...
 set API_READY=0
@@ -244,7 +263,7 @@ if errorlevel 1 (
   timeout /t 10 /nobreak >nul
 ) else (
   for /l %%i in (1,1,30) do (
-    curl -sf http://localhost:4000/api/health >nul 2>&1
+    curl -sf !API_ORIGIN!/api/health >nul 2>&1
     if not errorlevel 1 (
       set API_READY=1
       goto :api_ready
@@ -262,16 +281,22 @@ if "%API_READY%"=="1" (
 echo.
 
 :: Open browser
-start http://localhost:3004
+start %WEB_ORIGIN%
 
 echo.
 echo  =====================================================
 echo    EduCore is running!
 echo  =====================================================
 echo.
-echo    Website  :  http://localhost:3004
-echo    API      :  http://localhost:4000/api
-echo    Swagger  :  http://localhost:4000/api/docs
+echo    Website  :  %WEB_ORIGIN%
+echo    API      :  %API_ORIGIN%/api
+echo    Swagger  :  %API_ORIGIN%/api/docs
+if "%SERVER_MODE%"=="1" (
+  echo.
+  echo    Server mode: share %WEB_ORIGIN% with your client.
+  echo    If they still cannot reach it, check Windows Firewall
+  echo    and that both machines are on the same network.
+)
 echo.
 echo    Default login credentials  (log in at /login^)
 echo    +--------------------------------------------------+
@@ -333,6 +358,91 @@ if errorlevel 1 exit /b 1
 :node_installed
 for /f "tokens=*" %%v in ('node -v') do echo  Node.js %%v ready.
 echo.
+exit /b 0
+
+:: ══════════════════════════════════════════════════════
+:: Subroutine: choose localhost vs. this server's network
+:: IP, then write API_URL / WEB_URL / OAUTH_CALLBACK_BASE.
+:: Keeps an existing non-localhost URL so re-runs do not
+:: reset a client-server install back to localhost.
+:: ══════════════════════════════════════════════════════
+:configure_origins
+:: Optional override, e.g. `set EDUCORE_HOST=edu.example.com` before running.
+if defined EDUCORE_HOST (
+  set "HOST=!EDUCORE_HOST!"
+  if /i "!HOST!"=="localhost" (set "SERVER_MODE=0") else (set "SERVER_MODE=1")
+  goto :origins_write
+)
+set "CUR_API_URL="
+set "CUR_HOST="
+for /f "tokens=1* delims==" %%A in ('findstr /b "API_URL=" "%ROOT%\.env" 2^>nul') do set "CUR_API_URL=%%B"
+if defined CUR_API_URL (
+  set "CUR_API_URL=!CUR_API_URL:"=!"
+  for /f "tokens=2 delims=:/" %%A in ("!CUR_API_URL!") do set "CUR_HOST=%%A"
+)
+if defined CUR_HOST if /i not "!CUR_HOST!"=="localhost" if not "!CUR_HOST!"=="127.0.0.1" (
+  set "HOST=!CUR_HOST!"
+  set "SERVER_MODE=1"
+  echo  Keeping server address from .env ^(API_URL host: !HOST!^).
+  goto :origins_write
+)
+choice /c YN /n /m "  Will other machines access this server? (Y/N) "
+if errorlevel 2 goto :origins_local
+call :detect_lan_ip
+if not defined LAN_IP (
+  echo  WARNING: could not detect a network IP - keeping localhost.
+  goto :origins_local
+)
+set "HOST=!LAN_IP!"
+set "SERVER_MODE=1"
+echo  Using this server's network address: !HOST!
+goto :origins_write
+:origins_local
+set "HOST=localhost"
+set "SERVER_MODE=0"
+:origins_write
+set "API_ORIGIN=http://!HOST!:4000"
+set "WEB_ORIGIN=http://!HOST!:3004"
+call :set_env_key "%ROOT%\.env" "API_URL" "!API_ORIGIN!"
+call :set_env_key "%ROOT%\.env" "WEB_URL" "!WEB_ORIGIN!"
+call :set_env_key "%ROOT%\.env" "OAUTH_CALLBACK_BASE" "!API_ORIGIN!"
+echo  API_URL=%API_ORIGIN%
+echo  WEB_URL=%WEB_ORIGIN%
+exit /b 0
+
+:: ══════════════════════════════════════════════════════
+:: Subroutine: detect the primary LAN IPv4 address.
+:: Sets LAN_IP (empty when none found).
+:: ══════════════════════════════════════════════════════
+:detect_lan_ip
+set "LAN_IP="
+for /f "usebackq delims=" %%i in (`powershell -NoProfile -NonInteractive -Command "$ip = Get-NetIPConfiguration | Where-Object {$_.IPv4DefaultGateway -ne $null -and $_.NetAdapter.Status -eq 'Up'} | ForEach-Object {$_.IPv4Address.IPAddress} | Select-Object -First 1; if(-not $ip){ $ip = Get-NetIPAddress -AddressFamily IPv4 | Where-Object {$_.IPAddress -notmatch '^(127\.|169\.254\.)' -and $_.InterfaceAlias -notmatch 'Loopback|vEthernet|VMware|VirtualBox'} | Select-Object -First 1 -ExpandProperty IPAddress }; Write-Output $ip"`) do set "LAN_IP=%%i"
+exit /b 0
+
+:: ══════════════════════════════════════════════════════
+:: Subroutine: set KEY=VALUE in an env file, updating the
+:: first match or appending the key when it is missing.
+:: ══════════════════════════════════════════════════════
+:set_env_key
+set "ENV_FILE=%~1"
+set "ENV_KEY=%~2"
+set "ENV_VAL=%~3"
+powershell -NoProfile -NonInteractive -Command "$p=$env:ENV_FILE; $k=$env:ENV_KEY; $v=$env:ENV_VAL; $enc=New-Object System.Text.UTF8Encoding $false; $lines=New-Object System.Collections.Generic.List[string]; if(Test-Path $p){ foreach($l in [System.IO.File]::ReadAllLines($p,[System.Text.Encoding]::UTF8)){ $lines.Add($l) } }; $found=$false; for($i=0;$i -lt $lines.Count;$i++){ if($lines[$i] -match ('^'+[regex]::Escape($k)+'=')){ $lines[$i]=$k+'='+$v; $found=$true } }; if(-not $found){ $lines.Add($k+'='+$v) }; [System.IO.File]::WriteAllLines($p,$lines,$enc)"
+exit /b 0
+
+:: ══════════════════════════════════════════════════════
+:: Subroutine: allow inbound API/Web ports for LAN access.
+:: Needs Administrator; failure is only a warning.
+:: ══════════════════════════════════════════════════════
+:open_firewall
+netsh advfirewall firewall add rule name="EduCore API 4000" dir=in action=allow protocol=TCP localport=4000 >nul 2>&1
+netsh advfirewall firewall add rule name="EduCore Web 3004" dir=in action=allow protocol=TCP localport=3004 >nul 2>&1
+if errorlevel 1 (
+  echo  NOTE: could not add firewall rules - run as Administrator or
+  echo  allow inbound TCP 3004 and 4000 manually.
+) else (
+  echo  Firewall ports 3004 and 4000 opened.
+)
 exit /b 0
 
 :: ══════════════════════════════════════════════════════

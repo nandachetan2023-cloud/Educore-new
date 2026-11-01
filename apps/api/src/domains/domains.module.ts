@@ -19,6 +19,7 @@ import { resolveTxt } from 'dns/promises';
 import { RAW_PRISMA } from '../prisma/prisma.module';
 import { CurrentUser, Roles, SuperAdmin } from '../common/decorators';
 import { Principal } from '../common/enums';
+import { AuditService } from '../audit/audit.service';
 
 // Loose hostname check — full DNS validity is out of scope, this just
 // rejects obvious junk before it hits the DB's unique constraint.
@@ -39,7 +40,7 @@ class SetDomainDto {
  */
 @Injectable()
 export class DomainsService {
-  constructor(@Inject(RAW_PRISMA) private raw: PrismaClient) {}
+  constructor(@Inject(RAW_PRISMA) private raw: PrismaClient, private audit: AuditService) {}
 
   private async getOwnTenant(tenantId: number | null | undefined) {
     if (tenantId == null) {
@@ -69,6 +70,7 @@ export class DomainsService {
       where: { id: tenant.id },
       data: { customDomain: normalized, domainStatus: 'pending', domainVerificationToken: token },
     });
+    await this.audit.log({ action: 'domain.set', entity: 'tenant', entityId: tenant.id, meta: { domain: normalized } });
     return this.get(tenantId);
   }
 
@@ -83,13 +85,14 @@ export class DomainsService {
       const records = await resolveTxt(`${VERIFICATION_SUBDOMAIN}.${tenant.customDomain}`);
       verified = records.some((chunks) => chunks.join('') === tenant.domainVerificationToken);
     } catch {
-      verified = false; // NXDOMAIN / no TXT record yet — not an error, just not verified
+      verified = false;
     }
 
     await this.raw.tenant.update({
       where: { id: tenant.id },
       data: { domainStatus: verified ? 'verified' : 'failed' },
     });
+    await this.audit.log({ action: 'domain.verify', entity: 'tenant', entityId: tenant.id, meta: { domain: tenant.customDomain, verified } });
     return this.get(tenantId);
   }
 }

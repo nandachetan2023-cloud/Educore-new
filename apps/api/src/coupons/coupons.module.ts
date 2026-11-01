@@ -11,6 +11,7 @@ import {
   NotFoundException,
   Param,
   ParseIntPipe,
+  Patch,
   Post,
   Put,
   Query,
@@ -67,6 +68,8 @@ const COUPON_SELECT = {
   startsAt: true,
   endsAt: true,
   status: true,
+  approvalStatus: true,
+  deactivateAt: true,
   createdAt: true,
   updatedAt: true,
 } as const;
@@ -109,6 +112,13 @@ class CouponDto {
   @IsOptional() @IsDateString() startsAt?: string;
   @IsOptional() @IsDateString() endsAt?: string;
   @IsOptional() @IsBoolean() status?: boolean;
+  // DB-only: ignored (present in edit copies from frontend)
+  @IsOptional() @IsNumber() id?: number;
+  @IsOptional() @IsNumber() usedCount?: number;
+  @IsOptional() @IsString() approvalStatus?: string;
+  @IsOptional() @IsString() deactivateAt?: string;
+  @IsOptional() @IsString() createdAt?: string;
+  @IsOptional() @IsString() updatedAt?: string;
 }
 
 class UpdateCouponDto {
@@ -126,6 +136,12 @@ class UpdateCouponDto {
   @IsOptional() @IsDateString() startsAt?: string;
   @IsOptional() @IsDateString() endsAt?: string;
   @IsOptional() @IsBoolean() status?: boolean;
+  @IsOptional() @IsNumber() id?: number;
+  @IsOptional() @IsNumber() usedCount?: number;
+  @IsOptional() @IsString() approvalStatus?: string;
+  @IsOptional() @IsString() deactivateAt?: string;
+  @IsOptional() @IsString() createdAt?: string;
+  @IsOptional() @IsString() updatedAt?: string;
 }
 
 class OfferDto {
@@ -166,6 +182,10 @@ class UpdateOfferDto {
 
 class ValidateCouponDto {
   @IsString() @MinLength(3) @MaxLength(32) code!: string;
+}
+
+class DeactivateCouponDto {
+  @IsDateString() at!: string;
 }
 
 @Injectable()
@@ -210,6 +230,9 @@ export class CouponsService {
         startsAt: toDate(dto.startsAt),
         endsAt: toDate(dto.endsAt),
         status: dto.status ?? true,
+        // Admin-created coupons are live by default; the Super Admin can
+        // schedule a future deactivation instead of gating at creation.
+        approvalStatus: 'approved',
       },
       select: COUPON_SELECT,
     });
@@ -298,6 +321,30 @@ export class CouponsService {
     await this.requireCoupon(id);
     await this.prisma.coupon.delete({ where: { id } });
     return { removed: true };
+  }
+
+  /**
+   * Super-Admin kill switch. `at` must be a future timestamp — the coupon
+   * keeps working until then, then stops being redeemable. No past dates:
+   * to stop one now, just toggle its status off.
+   */
+  async deactivateCoupon(id: number, at: string) {
+    await this.requireCoupon(id);
+    const when = new Date(at);
+    if (Number.isNaN(when.getTime())) throw new BadRequestException('Provide a valid deactivation date and time');
+    if (when.getTime() <= Date.now()) {
+      throw new BadRequestException('Deactivation time must be in the future');
+    }
+    return this.prisma.coupon.update({ where: { id }, data: { deactivateAt: when }, select: COUPON_SELECT });
+  }
+
+  async reactivateCoupon(id: number) {
+    await this.requireCoupon(id);
+    return this.prisma.coupon.update({
+      where: { id },
+      data: { deactivateAt: null, status: true, approvalStatus: 'approved' },
+      select: COUPON_SELECT,
+    });
   }
 
   redemptions(couponId: number) {
@@ -612,6 +659,9 @@ export class CouponsService {
     if (!coupon) throw new BadRequestException('That coupon code does not exist');
 
     const now = new Date();
+    if (coupon.deactivateAt && coupon.deactivateAt <= now) {
+      throw new BadRequestException('That coupon has been deactivated');
+    }
     if (!coupon.status) throw new BadRequestException('That coupon is no longer active');
     if (coupon.startsAt && coupon.startsAt > now) {
       throw new BadRequestException(`That coupon is not active until ${coupon.startsAt.toISOString().slice(0, 10)}`);
@@ -843,9 +893,40 @@ export class PlatformCouponsController {
   }
 }
 
+/**
+ * Super-Admin scheduled deactivation / reactivation only.
+ * Admins can CRUD coupons; Super Admin can only schedule a future kill switch
+ * and reactivate.
+ */
+@ApiTags('superadmin coupons')
+@Controller('superadmin/coupons')
+@SuperAdmin()
+export class SuperAdminCouponsController {
+  constructor(private coupons: CouponsService, private audit: AuditService) {}
+
+  @Patch(':id/deactivate')
+  async deactivate(@Param('id', ParseIntPipe) id: number, @Body() dto: DeactivateCouponDto) {
+    const coupon = await this.coupons.deactivateCoupon(id, dto.at);
+    await this.audit.log({ action: 'coupon.schedule_deactivate', entity: 'coupon', entityId: id, meta: { at: dto.at } });
+    return coupon;
+  }
+
+  @Patch(':id/reactivate')
+  async reactivate(@Param('id', ParseIntPipe) id: number) {
+    const coupon = await this.coupons.reactivateCoupon(id);
+    await this.audit.log({ action: 'coupon.reactivate', entity: 'coupon', entityId: id });
+    return coupon;
+  }
+
+  @Get()
+  list() {
+    return this.coupons.listCoupons();
+  }
+}
+
 @Module({
   providers: [CouponsService],
-  controllers: [CouponsController, AdminCouponsController, AdminOffersController, PlatformCouponsController],
+  controllers: [CouponsController, AdminCouponsController, AdminOffersController, PlatformCouponsController, SuperAdminCouponsController],
   exports: [CouponsService],
 })
 export class CouponsModule {}
