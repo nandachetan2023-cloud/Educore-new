@@ -5,6 +5,7 @@ import { AuthService } from './auth.service';
 import { PrismaService, PrismaConnection } from '../prisma/prisma.service';
 import { RAW_PRISMA } from '../prisma/prisma.module';
 import { TenantStatusCache } from '../common/tenant-status-cache.service';
+import { AuditService } from '../audit/audit.service';
 import {
   ConflictException,
   UnauthorizedException,
@@ -47,6 +48,7 @@ describe('AuthService', () => {
         { provide: RAW_PRISMA, useValue: raw },
         { provide: PrismaConnection, useValue: raw },
         { provide: TenantStatusCache, useValue: tenantStatusCache },
+        { provide: AuditService, useValue: { log: jest.fn() } },
       ],
     }).compile();
 
@@ -66,6 +68,8 @@ describe('AuthService', () => {
       name: 'John Doe',
       email: 'john@example.com',
       password: 'password123',
+      confirmPassword: 'password123',
+      termsAccepted: 'true',
       role: 'student' as const,
     };
 

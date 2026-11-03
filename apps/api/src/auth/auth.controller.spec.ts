@@ -41,6 +41,7 @@ describe('AuthController', () => {
         name: 'John Doe',
         email: 'john@example.com',
         password: 'password123',
+        confirmPassword: 'password123',
         role: 'student' as const,
       };
       const result = { accessToken: 'access', refreshToken: 'refresh', principal: Principal.STUDENT };

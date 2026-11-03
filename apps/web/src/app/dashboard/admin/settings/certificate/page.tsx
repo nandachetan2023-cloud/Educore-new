@@ -106,7 +106,7 @@ export default function CertificateBuilderPage() {
     api<TemplateSummary[]>('/admin/certificate-builder/templates')
       .then(setTemplates)
       .catch(() => {});
-  }, [user, authLoading]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [user, authLoading]);
 
   /** Positions new elements in a loose stagger down the middle so they don't pile up. */
   const nextSpot = (count: number) => {
@@ -244,7 +244,6 @@ export default function CertificateBuilderPage() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected, items]);
 
   const save = async () => {
