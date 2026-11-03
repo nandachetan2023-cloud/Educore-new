@@ -32,9 +32,9 @@ export default function BillingPage() {
   const params = useSearchParams();
   const [tenant, setTenant] = useState<MyBilling | null>(null);
   const [plans, setPlans] = useState<PlanRow[]>([
-    { id: 1, name: 'Starter', priceMonthly: 2900, currency: 'usd', stripePriceId: 'price_1', isActive: true },
-    { id: 2, name: 'Pro', priceMonthly: 9900, currency: 'usd', stripePriceId: 'price_2', isActive: true },
-    { id: 3, name: 'Enterprise', priceMonthly: 29900, currency: 'usd', stripePriceId: 'price_3', isActive: true },
+    { id: 1, name: 'Starter', slug: 'starter', priceMonthly: 2900, currency: 'usd', stripePriceId: 'price_1', isActive: true },
+    { id: 2, name: 'Pro', slug: 'pro', priceMonthly: 9900, currency: 'usd', stripePriceId: 'price_2', isActive: true },
+    { id: 3, name: 'Enterprise', slug: 'enterprise', priceMonthly: 29900, currency: 'usd', stripePriceId: 'price_3', isActive: true },
   ]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
