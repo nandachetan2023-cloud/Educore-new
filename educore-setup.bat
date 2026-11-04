@@ -252,7 +252,25 @@ if exist "%ROOT%\.educore-seeded" (
 )
 echo  Seeding database with demo data...
 echo  NOTE: the seed resets demo tenants/users/courses.
+:: The seed imports @prisma/client directly. If the generated client
+:: is missing (failed/old-skipped generate, wiped node_modules) its
+:: stub import would abort with "@prisma/client did not initialize
+:: yet". Recover by generating here instead of failing.
 cd /d "%API%"
+call node -e "require('@prisma/client')" >nul 2>&1
+if errorlevel 1 (
+  echo  Prisma client is not initialized - running generate first...
+  if exist "%ROOT%\.env" copy /y "%ROOT%\.env" "%API%\.env" >nul
+  taskkill /f /im node.exe >nul 2>&1
+  timeout /t 2 /nobreak >nul
+  call "%PRISMA%" generate
+  if errorlevel 1 (
+    echo  ERROR: Prisma generate failed - see the error above.
+    echo  Make sure apps\api\.env exists with DATABASE_URL, then re-run.
+    pause
+    exit /b 1
+  )
+)
 call node -e "require('dotenv').config({path:'../../.env'}); require('ts-node').register({transpileOnly:true, compilerOptions:{module:'commonjs'}}); require('./prisma/seed.ts')"
 if errorlevel 1 (
   echo  ERROR: Seed failed - see the error above, then re-run.
