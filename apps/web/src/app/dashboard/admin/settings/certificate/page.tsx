@@ -291,7 +291,9 @@ export default function CertificateBuilderPage() {
 
   return (
     <div className="container-page max-w-6xl py-10">
-      <Link href="/dashboard/admin/settings" className="text-sm text-muted hover:text-brand">← Settings</Link>
+      <Link href={user?.adminRole === 'super_admin' ? '/dashboard/admin/settings' : '/dashboard/admin'} className="text-sm text-muted hover:text-brand">
+        ← {user?.adminRole === 'super_admin' ? 'Settings' : 'Admin console'}
+      </Link>
       <div className="mt-3 flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-3xl font-extrabold">Certificate builder</h1>

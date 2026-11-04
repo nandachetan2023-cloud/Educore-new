@@ -151,7 +151,10 @@ export default function AdminConsole() {
         {
           heading: 'Settings',
           links: [
-            { href: '/dashboard/admin/settings', label: 'Settings', icon: Cog },
+            // The settings hub (payment, files, pages, contact) is the
+            // super-admin's area — tenant admins get bounced back silently,
+            // so only surface the link to that tier.
+            ...(user?.adminRole === 'super_admin' ? [{ href: '/dashboard/admin/settings', label: 'Settings', icon: Cog }] : []),
             { href: '/dashboard/admin/settings/certificate', label: 'Certificate builder', icon: Award },
             { href: '/dashboard/admin/certificates', label: 'Certificates', icon: Award },
           ],
@@ -187,7 +190,7 @@ export default function AdminConsole() {
                 </button>
               ))}
               <Link href="/dashboard/admin/billing" className="btn-ghost px-3 py-2 text-sm">Billing</Link>
-              <Link href="/dashboard/admin/settings" className="btn-ghost px-3 py-2 text-sm">Settings</Link>
+              {user?.adminRole === 'super_admin' && <Link href="/dashboard/admin/settings" className="btn-ghost px-3 py-2 text-sm">Settings</Link>}
               <Link href="/dashboard/admin/settings/certificate" className="btn-ghost px-3 py-2 text-sm">Certificate</Link>
             </div>
 

@@ -77,6 +77,62 @@ export class ApiError extends Error {
   }
 }
 
+// ── Transparent access-token refresh ─────────────────────────────────
+// Access tokens live only 15 minutes; without this, every admin console
+// page kicks the user back to /login after 15 minutes of use (stored
+// refreshToken was never exchanged). On a 401 we swap the refresh token
+// for a fresh pair once, then replay the failed request. Auth endpoints
+// that must surface their own errors are excluded from the retry.
+
+/** In-flight refresh round-trip shared by all concurrent 401 responses. */
+let refreshInFlight: Promise<boolean> | null = null;
+
+async function tryRefresh(): Promise<boolean> {
+  const refreshToken =
+    typeof window === 'undefined' ? null : localStorage.getItem(REFRESH_KEY);
+  if (!refreshToken) return false;
+  // Single flight: N parallel 401s share N-1 no-ops.
+  refreshInFlight ??= fetch(`${BASE}/auth/refresh`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ refreshToken }),
+  })
+    .then(async (res) => {
+      if (!res.ok) return false;
+      const data = (await res.json()) as { accessToken: string; refreshToken?: string };
+      if (!data?.accessToken) return false;
+      tokenStore.set(data.accessToken, data.refreshToken ?? refreshToken);
+      return true;
+    })
+    .catch(() => false)
+    .finally(() => {
+      refreshInFlight = null;
+    });
+  return refreshInFlight;
+}
+
+/** Says "this 401 is a real auth problem, do not exchange tokens for it". */
+function notRetryable(path: string): boolean {
+  return /^\/auth\/(refresh|login|admin\/login|register)\b/.test(path);
+}
+
+/** Sends a request; transparently retries once after a successful refresh. */
+async function sendWithRetry(path: string, init: RequestInit): Promise<Response> {
+  let res = await fetch(`${BASE}${path}`, init);
+  if (
+    res.status === 401 &&
+    typeof window !== 'undefined' &&
+    localStorage.getItem(REFRESH_KEY) &&
+    !notRetryable(path) &&
+    (await tryRefresh())
+  ) {
+    const headers = new Headers(init.headers);
+    if (tokenStore.access) headers.set('Authorization', `Bearer ${tokenStore.access}`);
+    res = await fetch(`${BASE}${path}`, { ...init, headers });
+  }
+  return res;
+}
+
 export async function api<T = unknown>(
   path: string,
   options: RequestInit & { auth?: boolean } = {},
@@ -88,7 +144,7 @@ export async function api<T = unknown>(
   }
   for (const [k, v] of Object.entries(tenantHeaders())) headers.set(k, v);
 
-  const res = await fetch(`${BASE}${path}`, { ...options, headers, cache: 'no-store' });
+  const res = await sendWithRetry(path, { ...options, headers, cache: 'no-store' });
 
   if (!res.ok) {
     let message = res.statusText;
@@ -109,7 +165,7 @@ export async function downloadFile(path: string, filename: string): Promise<void
   const headers = new Headers();
   if (tokenStore.access) headers.set('Authorization', `Bearer ${tokenStore.access}`);
   for (const [k, v] of Object.entries(tenantHeaders())) headers.set(k, v);
-  const res = await fetch(`${BASE}${path}`, { headers });
+  const res = await sendWithRetry(path, { headers });
   if (!res.ok) {
     let message = res.statusText;
     try {
