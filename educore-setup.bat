@@ -190,7 +190,13 @@ echo [6/10] Checking Prisma client...
 :: source of truth is the root .env. Mirror it so generate + db push
 :: see DATABASE_URL without parsing passwords with special chars.
 copy /y "%ROOT%\.env" "%API%\.env" >nul
-if exist "%ROOT%\node_modules\.prisma\client\index.js" (
+cd /d "%API%"
+:: The generated client is considered ready only when requiring
+:: @prisma/client actually succeeds - the pre-generate look-alike stub
+:: (index.js) is present in node_modules even before generating and
+:: throws "@prisma/client did not initialize yet" on import.
+call node -e "require('@prisma/client')" >nul 2>&1
+if not errorlevel 1 (
   echo  Prisma client is already bundled with this package -
   echo  skipping generate.
   echo.
