@@ -191,11 +191,14 @@ echo [6/10] Checking Prisma client...
 :: see DATABASE_URL without parsing passwords with special chars.
 copy /y "%ROOT%\.env" "%API%\.env" >nul
 cd /d "%API%"
-:: The generated client is considered ready only when requiring
-:: @prisma/client actually succeeds - the pre-generate look-alike stub
-:: (index.js) is present in node_modules even before generating and
-:: throws "@prisma/client did not initialize yet" on import.
-call node -e "require('@prisma/client')" >nul 2>&1
+:: The generated client is considered ready only when CONSTRUCTING
+:: PrismaClient succeeds. The pre-generate look-alike stub (index.js)
+:: is present in node_modules even before generating, and merely
+:: requiring it succeeds - it exports a class whose constructor throws
+:: "@prisma/client did not initialize yet". So construct one to tell
+:: the stub apart from a real generated client (connections are lazy,
+:: so constructing does not touch the database).
+call node -e "new (require('@prisma/client').PrismaClient)()" >nul 2>&1
 if not errorlevel 1 (
   echo  Prisma client is already bundled with this package -
   echo  skipping generate.
@@ -254,10 +257,12 @@ echo  Seeding database with demo data...
 echo  NOTE: the seed resets demo tenants/users/courses.
 :: The seed imports @prisma/client directly. If the generated client
 :: is missing (failed/old-skipped generate, wiped node_modules) its
-:: stub import would abort with "@prisma/client did not initialize
-:: yet". Recover by generating here instead of failing.
+:: stub does not throw on import - the class it exports throws on
+:: CONSTRUCTION ("@prisma/client did not initialize yet"), so the
+:: probe builds a client to detect the stub. Recover by generating
+:: here instead of failing.
 cd /d "%API%"
-call node -e "require('@prisma/client')" >nul 2>&1
+call node -e "new (require('@prisma/client').PrismaClient)()" >nul 2>&1
 if errorlevel 1 (
   echo  Prisma client is not initialized - running generate first...
   if exist "%ROOT%\.env" copy /y "%ROOT%\.env" "%API%\.env" >nul
