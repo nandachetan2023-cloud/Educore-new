@@ -27,9 +27,10 @@ set "WEB_ORIGIN=http://localhost:3004"
 echo.
 echo  =====================================================
 echo    EduCore - Automated Setup ^& Launch
-echo    Installs Node.js + PostgreSQL if missing, installs
-echo    dependencies, sets up the DB, builds and starts
-echo    API (:4000^) + Web (:3004^)
+echo    Installs Node.js + PostgreSQL if missing, prepares
+echo    the DB and starts API (:4000^) + Web (:3004^).
+echo    Steps already done by this package (dependencies,
+echo    Prisma client, builds, seed^) are skipped automatically.
 echo  =====================================================
 echo.
 
@@ -154,7 +155,20 @@ echo.
 :: ──────────────────────────────────────────────
 :: STEP 5 - Install all dependencies (npm workspaces)
 :: ──────────────────────────────────────────────
-echo [5/10] Installing dependencies (npm install - this takes a few minutes^)...
+echo [5/10] Checking dependencies...
+if exist "%ROOT%\node_modules\.bin\prisma.cmd" (
+  if exist "%ROOT%\node_modules\@nestjs\cli\bin\nest.js" (
+    if exist "%ROOT%\apps\web\node_modules\next\dist\bin\next" (
+      if exist "%ROOT%\node_modules\ts-node" (
+        echo  node_modules are already bundled with this package -
+        echo  skipping npm install.
+        echo.
+        goto :deps_done
+      )
+    )
+  )
+)
+echo  Installing dependencies (npm install - this takes a few minutes^)...
 cd /d "%ROOT%"
 call npm install --no-audit --no-fund
 if errorlevel 1 (
@@ -163,6 +177,7 @@ if errorlevel 1 (
   exit /b 1
 )
 echo  Dependencies installed.
+:deps_done
 echo.
 
 :: ──────────────────────────────────────────────
@@ -170,14 +185,23 @@ echo.
 :: (Kill stray node processes first: a running API locks
 ::  the Prisma engine DLL and generate would fail with EPERM.)
 :: ──────────────────────────────────────────────
-echo [6/10] Generating Prisma client...
-taskkill /f /im node.exe >nul 2>&1
-timeout /t 2 /nobreak >nul
-cd /d "%API%"
+echo [6/10] Checking Prisma client...
 :: Prisma CLI only reads .env from its cwd (apps\api), while our
 :: source of truth is the root .env. Mirror it so generate + db push
 :: see DATABASE_URL without parsing passwords with special chars.
 copy /y "%ROOT%\.env" "%API%\.env" >nul
+if exist "%ROOT%\node_modules\.prisma\client\index.js" (
+  echo  Prisma client is already bundled with this package -
+  echo  skipping generate.
+  echo.
+  goto :prisma_done
+)
+:: Kill stray node processes first: a running API locks
+:: the Prisma engine DLL and generate would fail with EPERM.
+echo  Generating Prisma client...
+taskkill /f /im node.exe >nul 2>&1
+timeout /t 2 /nobreak >nul
+cd /d "%API%"
 call "%PRISMA%" generate
 if errorlevel 1 (
   echo  Retrying after 5 seconds...
@@ -191,12 +215,14 @@ if errorlevel 1 (
   )
 )
 echo  Prisma client generated.
+:prisma_done
 echo.
 
 :: ──────────────────────────────────────────────
 :: STEP 7 - Sync database schema (prisma db push)
 :: ──────────────────────────────────────────────
 echo [7/10] Syncing database schema...
+cd /d "%API%"
 call "%PRISMA%" db push --skip-generate
 if errorlevel 1 (
   echo  ERROR: Database sync failed.
@@ -210,7 +236,15 @@ echo.
 :: ──────────────────────────────────────────────
 :: STEP 8 - Seed demo data (RESETS demo content)
 :: ──────────────────────────────────────────────
-echo [8/10] Seeding database with demo data...
+echo [8/10] Checking demo data...
+if exist "%ROOT%\.educore-seeded" (
+  echo  Demo data was seeded before - skipping.
+  echo  ^(To reset demo data, delete .educore-seeded next to this
+  echo   script and re-run.^)
+  echo.
+  goto :seed_done
+)
+echo  Seeding database with demo data...
 echo  NOTE: the seed resets demo tenants/users/courses.
 cd /d "%API%"
 call node -e "require('dotenv').config({path:'../../.env'}); require('ts-node').register({transpileOnly:true, compilerOptions:{module:'commonjs'}}); require('./prisma/seed.ts')"
@@ -219,30 +253,45 @@ if errorlevel 1 (
   pause
   exit /b 1
 )
+break > "%ROOT%\.educore-seeded"
 echo  Seed complete ^(tenants, courses, users, leads ^& resellers^).
+:seed_done
 echo.
 
 :: ──────────────────────────────────────────────
 :: STEP 9 - Build API + Web
 :: ──────────────────────────────────────────────
-echo [9/10] Building API...
-cd /d "%ROOT%"
-call npm run build --workspace=@educore/api
-if errorlevel 1 (
-  echo  ERROR: API build failed.
-  pause
-  exit /b 1
+echo [9/10] Checking build outputs...
+if exist "%ROOT%\apps\api\dist\src\main.js" (
+  if exist "%ROOT%\apps\web\.next\BUILD_ID" (
+    echo  Prebuilt API and Web bundles found - skipping build.
+    echo.
+    goto :build_done
+  )
 )
-echo  API built.
-echo.
-echo  Building Web (this may take 1-2 minutes^)...
-call npm run build --workspace=@educore/web
-if errorlevel 1 (
-  echo  ERROR: Web build failed.
-  pause
-  exit /b 1
+if not exist "%ROOT%\apps\api\dist\src\main.js" (
+  echo  Building API...
+  cd /d "%ROOT%"
+  call npm run build --workspace=@educore/api
+  if errorlevel 1 (
+    echo  ERROR: API build failed.
+    pause
+    exit /b 1
+  )
+  echo  API built.
 )
-echo  Web built.
+if not exist "%ROOT%\apps\web\.next\BUILD_ID" (
+  echo  Building Web ^(this may take 1-2 minutes^)...
+  cd /d "%ROOT%"
+  call npm run build --workspace=@educore/web
+  if errorlevel 1 (
+    echo  ERROR: Web build failed.
+    pause
+    exit /b 1
+  )
+  echo  Web built.
+)
+:build_done
 echo.
 
 :: ──────────────────────────────────────────────
@@ -299,13 +348,14 @@ if "%SERVER_MODE%"=="1" (
 )
 echo.
 echo    Default login credentials  (log in at /login^)
+echo    All demo passwords are "password".
 echo    +--------------------------------------------------+
 echo    Role          Email                 Password
 echo    ----------------------------------------------------
 echo    Super Admin   superadmin@gmail.com  password
 echo    Admin         admin@gmail.com       password
-echo    Instructor    instructor@gmail.com  12345678
-echo    Student       user@gmail.com        12345678
+echo    Instructor    instructor@gmail.com  password
+echo    Student       user@gmail.com        password
 echo    +--------------------------------------------------+
 echo    Tick "administrator" for the two admin tiers.
 echo.
@@ -380,10 +430,15 @@ if defined CUR_API_URL (
   set "CUR_API_URL=!CUR_API_URL:"=!"
   for /f "tokens=2 delims=:/" %%A in ("!CUR_API_URL!") do set "CUR_HOST=%%A"
 )
-if defined CUR_HOST if /i not "!CUR_HOST!"=="localhost" if not "!CUR_HOST!"=="127.0.0.1" (
-  set "HOST=!CUR_HOST!"
-  set "SERVER_MODE=1"
-  echo  Keeping server address from .env ^(API_URL host: !HOST!^).
+if defined CUR_API_URL (
+  if /i not "!CUR_HOST!"=="localhost" if not "!CUR_HOST!"=="127.0.0.1" (
+    set "HOST=!CUR_HOST!"
+    set "SERVER_MODE=1"
+    echo  Keeping server address from .env ^(API_URL host: !HOST!^).
+    goto :origins_write
+  )
+  set "HOST=localhost"
+  set "SERVER_MODE=0"
   goto :origins_write
 )
 choice /c YN /n /m "  Will other machines access this server? (Y/N) "

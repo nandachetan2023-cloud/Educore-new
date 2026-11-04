@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Award, Plus } from 'lucide-react';
 import { useAuth } from '@/lib/providers';
 import { DirectoryShell } from '@/components/directory-shell';
-import { api } from '@/lib/api';
+import { api, downloadFile, ApiError } from '@/lib/api';
 
 interface CertRecord {
   id: number;
@@ -29,6 +29,7 @@ export default function AdminCertificatesPage() {
   const [students, setStudents] = useState<{id:number; name:string}[]>([]);
   const [courses, setCourses] = useState<{id:number; title:string}[]>([]);
   const [form, setForm] = useState({ studentId: 0, courseId: 0, style: STYLES[0] });
+  const [busy, setBusy] = useState(false);
 
   const load = async () => {
     const [certs, studsRaw, crsRaw] = await Promise.all([
@@ -48,17 +49,39 @@ export default function AdminCertificatesPage() {
   }, [user, loading]);
 
   const create = async () => {
-    if (!form.studentId || !form.courseId) return;
-    await api('/admin/certificates', { method: 'POST', body: JSON.stringify({ studentId: form.studentId, courseId: form.courseId, style: form.style }) });
-    setShowForm(false);
-    setForm({ studentId: 0, courseId: 0, style: STYLES[0] });
-    await load();
+    if (!form.studentId || !form.courseId) {
+      alert('Select a student and a course first.');
+      return;
+    }
+    setBusy(true);
+    try {
+      await api('/admin/certificates', { method: 'POST', body: JSON.stringify({ studentId: form.studentId, courseId: form.courseId, style: form.style }) });
+      setShowForm(false);
+      setForm({ studentId: 0, courseId: 0, style: STYLES[0] });
+      await load();
+    } catch (e) {
+      alert(e instanceof ApiError ? e.message : 'Could not issue certificate.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const download = async (id: number) => {
+    try {
+      await downloadFile(`/admin/certificates/${id}/pdf`, `certificate-${id}.pdf`);
+    } catch (e) {
+      alert(e instanceof ApiError ? e.message : 'Could not download the certificate PDF.');
+    }
   };
 
   const del = async (id: number) => {
     if (!confirm('Delete certificate record?')) return;
-    await api(`/admin/certificates/${id}`, { method: 'DELETE' });
-    await load();
+    try {
+      await api(`/admin/certificates/${id}`, { method: 'DELETE' });
+      await load();
+    } catch (e) {
+      alert(e instanceof ApiError ? e.message : 'Could not delete certificate.');
+    }
   };
 
   if (loading) return <div className="py-20 text-center text-muted">Loading…</div>;
@@ -93,7 +116,7 @@ export default function AdminCertificatesPage() {
             </div>
             <div className="mt-3 flex justify-end gap-2">
               <button className="btn" onClick={()=>setShowForm(false)}>Cancel</button>
-              <button className="btn-primary" onClick={create}>Issue</button>
+              <button className="btn-primary" disabled={busy} onClick={create}>{busy ? 'Issuing…' : 'Issue'}</button>
             </div>
           </div>
         )}
@@ -119,7 +142,7 @@ export default function AdminCertificatesPage() {
                   <td className="px-4 py-3">{new Date(r.issuedAt).toLocaleDateString()}</td>
                   <td className="px-4 py-3">{r.issuedBy}</td>
                   <td className="px-4 py-3 text-right">
-                    <a className="text-sm text-brand hover:underline mr-3" href={`/api/admin/certificates/${r.id}/pdf`}>Download PDF</a>
+                    <button className="text-sm text-brand hover:underline mr-3" onClick={()=>download(r.id)}>Download PDF</button>
                     <button className="text-sm text-red-500 hover:underline" onClick={()=>del(r.id)}>Delete</button>
                   </td>
                 </tr>
