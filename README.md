@@ -2,7 +2,7 @@
 
 A white-label LMS / online course marketplace — a Node.js (NestJS + Next.js) port of the original EduCore Laravel platform.
 
-> **Status: feature-complete core, verified running live.** The full stack has been run end-to-end against a live PostgreSQL database — the whole lifecycle passes: instructor creates a course → admin approves → student enrolls (free or Stripe) → completes lessons → progress hits 100% → certificate. Auth (3 roles), commerce, course player, admin console, instructor course-builder, payouts, certificates (PDF), file uploads, SMTP mail, CMS content blocks, and a blog are all implemented; both apps build clean. Remaining before calling it production-ready: versioned migrations, automated test suite, CI, and an S3 upload driver. See [Roadmap](#roadmap).
+> **Status: full-stack LMS application.** The repository includes a Next.js storefront and dashboards, a NestJS API, and a PostgreSQL/Prisma data layer. Current features include multi-role authentication, course authoring and learning, checkout, admin and superadmin tools, a page builder, CMS/blog, certificates, and tenant-aware settings. Both applications build; the API test suite covers authentication, SSO, courses, payments, and coupons. See [Roadmap](#roadmap) for remaining production work.
 
 ## Stack
 
@@ -11,7 +11,7 @@ A white-label LMS / online course marketplace — a Node.js (NestJS + Next.js) p
 | API      | NestJS 10 + TypeScript                   |
 | ORM      | Prisma 5 (PostgreSQL)                    |
 | Auth     | JWT (access + refresh), Argon2 hashing   |
-| Frontend | Next.js (App Router) — _scaffold pending_|
+| Frontend | Next.js 14 (App Router) + React 18       |
 | Payments | Stripe, PayPal, Razorpay — all three wired |
 
 ## Layout
@@ -19,35 +19,27 @@ A white-label LMS / online course marketplace — a Node.js (NestJS + Next.js) p
 ```
 educore-node/
 ├─ apps/
-│  ├─ api/            NestJS API
-│  │  ├─ prisma/      schema.prisma (45 models), seed.ts
-│  │  └─ src/         auth, courses, categories, health, common, prisma
-│  └─ web/            Next.js frontend (pending)
-├─ docker-compose.yml MySQL + Adminer + API
+│  ├─ api/            NestJS API and Prisma schema, migrations, seeds
+│  └─ web/            Next.js storefront, auth, and dashboards
+├─ scripts/           Development and build launchers
 └─ .env.example
 ```
 
 ## Quick start
 
-### Option A — Docker (recommended)
+### Local development
 
 ```bash
-cp .env.example .env          # then edit secrets
-docker compose up --build      # API on :4000, Adminer on :8080
-```
-
-### Option B — Local
-
-```bash
-cp .env.example .env
 npm install
-# Point DATABASE_URL at your PostgreSQL, create the `educore` database, then:
-cd apps/api
-npx prisma db push        # create tables from schema
-# Set SEED_ADMIN_PASSWORD, SEED_USER_PASSWORD and SEED_STAFF_PASSWORD in .env first.
-npm run prisma:seed       # demo admin/instructor/student + taxonomy
-npm run start:dev         # API on http://localhost:4000/api
+cp .env.example .env      # configure PostgreSQL and local seed passwords
+npm run db:generate
+npm run dev               # web on :3004 and API on :4000
 ```
+
+Before starting, create the PostgreSQL database and set `DATABASE_URL` in `.env`.
+To initialize its schema and optional demo accounts, run `npm run db:migrate`
+and `npm run db:seed` after configuring the `SEED_*_PASSWORD` variables. The seed
+clears and recreates demo data, so only run it against a disposable development database.
 
 API docs (dev only): **http://localhost:4000/api/docs**
 
