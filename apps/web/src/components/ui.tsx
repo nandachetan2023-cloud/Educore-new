@@ -5,6 +5,7 @@ import {
   FileText, Globe, GraduationCap, HeartPulse, Lock, Megaphone, Music, Palette, Play,
   Search, ShieldCheck, ShoppingCart, Sprout, Star, TrendingUp, Users,
 } from 'lucide-react';
+import { useState } from 'react';
 import { useBranding } from '@/lib/providers';
 
 export const Icons = {
@@ -16,13 +17,15 @@ export const Icons = {
 /** White-label brand mark — icon-only square (wordmark lives in BrandName next to it). */
 export function BrandMark({ size = 'md' }: { size?: 'sm' | 'md' | 'lg' }) {
   const branding = useBranding();
+  const [broken, setBroken] = useState(false);
   const dims = size === 'lg' ? 'h-11 w-11' : size === 'sm' ? 'h-7 w-7' : 'h-8 w-8';
-  if (branding?.logo) {
+  if (branding?.logo && !broken) {
     return (
       <img
         src={branding.logo}
         alt=""
         aria-hidden
+        onError={() => setBroken(true)}
         className={`${dims} shrink-0 rounded-xl object-contain`}
       />
     );

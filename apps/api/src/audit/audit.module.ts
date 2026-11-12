@@ -40,13 +40,17 @@ export class MyAuditController {
   mine(
     @CurrentUser() principal: AuthPrincipal,
     @Query('action') action?: string,
-    @Query('take') take?: string,
-    @Query('skip') skip?: string,
+    @Query('entity') entity?: string,
+    @Query('q') q?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
   ) {
-    return this.audit.listForPrincipal(principal, {
+    return this.audit.listPageForPrincipal(principal, {
       action: action || undefined,
-      take: take ? Number(take) : undefined,
-      skip: skip ? Number(skip) : undefined,
+      entity: entity || undefined,
+      q: q || undefined,
+      page: page ? Number(page) : undefined,
+      limit: limit ? Number(limit) : undefined,
     });
   }
 }

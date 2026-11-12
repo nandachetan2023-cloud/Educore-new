@@ -1,11 +1,13 @@
 import { Type } from 'class-transformer';
 import {
+  IsArray,
   IsInt,
   IsOptional,
   IsString,
   Min,
   IsNotEmpty,
   IsNumber,
+  IsBoolean,
 } from 'class-validator';
 
 export class CourseQueryDto {
@@ -24,6 +26,10 @@ export class CourseQueryDto {
   @IsOptional()
   @IsString()
   language?: string; // language slug
+
+  @IsOptional()
+  @IsString()
+  tag?: string; // tag slug
 
   @IsOptional()
   @IsString()
@@ -78,6 +84,27 @@ export class CreateCourseDto {
   @IsOptional()
   @IsNumber()
   discount?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  capacity?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  certificate?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  qna?: boolean;
+
+  /** Tag ids from the workspace tag list. */
+  @IsOptional()
+  @IsArray()
+  @Type(() => Number)
+  @IsInt({ each: true })
+  tagIds?: number[];
 }
 
 export class UpdateCourseDto extends CreateCourseDto {}

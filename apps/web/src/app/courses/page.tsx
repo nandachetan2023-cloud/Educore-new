@@ -35,6 +35,7 @@ function CatalogInner() {
   const search = params.get('search') ?? '';
   const category = params.get('category') ?? '';
   const level = params.get('level') ?? '';
+  const tag = params.get('tag') ?? '';
   const sort = params.get('sort') ?? 'newest';
   const [query, setQuery] = useState(search);
   const [maxPrice, setMaxPrice] = useState(MAX_PRICE);
@@ -58,6 +59,7 @@ function CatalogInner() {
     if (search) qs.set('search', search);
     if (category) qs.set('category', category);
     if (level) qs.set('level', level);
+    if (tag) qs.set('tag', tag);
     if (sort) qs.set('sort', sort);
     qs.set('page', '1');
     qs.set('perPage', String(PER_PAGE));
@@ -65,7 +67,7 @@ function CatalogInner() {
       .then((r) => { setItems(r.data); setTotal(r.meta.total); setLastPage(r.meta.lastPage); })
       .catch(() => { setItems([]); setTotal(0); setLastPage(1); })
       .finally(() => setLoading(false));
-  }, [search, category, level, sort]);
+  }, [search, category, level, tag, sort]);
 
   const loadMore = () => {
     if (page >= lastPage) return;
@@ -75,6 +77,7 @@ function CatalogInner() {
     if (search) qs.set('search', search);
     if (category) qs.set('category', category);
     if (level) qs.set('level', level);
+    if (tag) qs.set('tag', tag);
     if (sort) qs.set('sort', sort);
     qs.set('page', String(next));
     qs.set('perPage', String(PER_PAGE));
@@ -96,7 +99,7 @@ function CatalogInner() {
     router.push('/courses');
   };
 
-  const hasActiveFilters = !!(search || category || level || maxPrice < MAX_PRICE || minRating > 0);
+  const hasActiveFilters = !!(search || category || level || tag || maxPrice < MAX_PRICE || minRating > 0);
 
   // Price + rating have no server-side support, so they filter the loaded page client-side.
   const visible = useMemo(
@@ -172,6 +175,15 @@ function CatalogInner() {
                 </button>
               )}
             </div>
+
+            {tag && (
+              <button
+                onClick={() => update('tag', '')}
+                className="mt-4 inline-flex items-center gap-1.5 rounded-full border border-brand/30 bg-brand-soft px-3 py-1 text-xs font-semibold text-brand"
+              >
+                #{tag} <span aria-hidden>&times;</span>
+              </button>
+            )}
 
             {/* Categories */}
             <div className="mt-5 border-t border-line pt-5">
@@ -315,7 +327,7 @@ function CatalogInner() {
                       </p>
                       <div className="mt-auto flex items-center justify-between pt-3">
                         <span className="text-lg font-extrabold">
-                          {netPrice(c) === 0 ? 'Free' : new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD' }).format(netPrice(c))}
+                          {netPrice(c) === 0 ? 'Free' : new Intl.NumberFormat(undefined, { style: 'currency', currency: 'INR' }).format(netPrice(c))}
                         </span>
                         <span className="flex items-center gap-1 text-sm font-semibold text-brand">View course <ArrowRight className="h-4 w-4" /></span>
                       </div>

@@ -381,6 +381,347 @@ export class CouponsService {
     };
   }
 
+  /**
+   * In-depth coupon analytics: totals, a 30-day timeline, per-coupon performance,
+   * the users who redeemed (with their spend), the courses that sold, and the
+   * most recent redemptions. Everything is computed from the redemption rows so
+   * the numbers always match what was actually fulfilled.
+   */
+  async analytics(days = 30) {
+    const windowDays = Math.min(365, Math.max(7, days));
+    const since = new Date();
+    since.setDate(since.getDate() - windowDays);
+    since.setHours(0, 0, 0, 0);
+
+    const [redemptions, coupons] = await Promise.all([
+      this.prisma.couponRedemption.findMany({
+        orderBy: { createdAt: 'desc' },
+        include: {
+          coupon: {
+            select: {
+              id: true, code: true, type: true, value: true, maxDiscount: true,
+              status: true, usageLimit: true, perUserLimit: true, usedCount: true,
+              startsAt: true, endsAt: true, deactivateAt: true,
+            },
+          },
+        },
+      }),
+      this.prisma.coupon.findMany({
+        select: {
+          id: true, code: true, description: true, type: true, value: true, maxDiscount: true,
+          target: true, status: true, usageLimit: true, perUserLimit: true, usedCount: true,
+          startsAt: true, endsAt: true, deactivateAt: true, createdAt: true, tenantId: true,
+        },
+      }),
+    ]);
+
+    const userIds = [...new Set(redemptions.map((r) => r.userId))];
+    const orderIds = [...new Set(redemptions.map((r) => r.orderId))];
+
+    const [users, orders, orderItems, tenants] = await Promise.all([
+      userIds.length
+        ? this.prisma.user.findMany({
+            where: { id: { in: userIds } },
+            select: { id: true, name: true, email: true, image: true, role: true },
+          })
+        : Promise.resolve([]),
+      orderIds.length
+        ? this.prisma.order.findMany({
+            where: { id: { in: orderIds } },
+            select: { id: true, invoiceId: true, totalAmount: true, paidAmount: true, currency: true, status: true, createdAt: true },
+          })
+        : Promise.resolve([]),
+      orderIds.length
+        ? this.prisma.orderItem.findMany({
+            where: { orderId: { in: orderIds } },
+            select: { orderId: true, courseId: true, price: true },
+          })
+        : Promise.resolve([]),
+      this.prisma.tenant.findMany({ select: { id: true, name: true, slug: true } }).catch(() => []),
+    ]);
+
+    const tenantById = new Map(tenants.map((t) => [t.id, t]));
+
+    const courseIds = [...new Set(orderItems.map((i) => i.courseId))];
+    const courses = courseIds.length
+      ? await this.prisma.course.findMany({
+          where: { id: { in: courseIds } },
+          select: { id: true, title: true, slug: true, thumbnail: true },
+        })
+      : [];
+
+    const userById = new Map(users.map((u) => [u.id, u]));
+    const orderById = new Map(orders.map((o) => [o.id, o]));
+    const courseById = new Map(courses.map((c) => [c.id, c]));
+    const itemsByOrder = new Map<number, { courseId: number; price: number }[]>();
+    for (const i of orderItems) {
+      const list = itemsByOrder.get(i.orderId) ?? [];
+      list.push({ courseId: i.courseId, price: i.price });
+      itemsByOrder.set(i.orderId, list);
+    }
+
+    // ── Totals ────────────────────────────────────────────────
+    const totalDiscount = round2(redemptions.reduce((n, r) => n + r.amount, 0));
+    const totalRevenue = round2(redemptions.reduce((n, r) => n + r.orderTotal, 0));
+    const totalCourses = redemptions.reduce((n, r) => n + r.courseCount, 0);
+    const uniqueUsers = new Set(redemptions.map((r) => r.userId)).size;
+    const inWindow = redemptions.filter((r) => r.createdAt >= since);
+
+    // ── 30-day timeline ───────────────────────────────────────
+    const timeline: { date: string; redemptions: number; discount: number; revenue: number; users: number }[] = [];
+    const byDay = new Map<string, { redemptions: number; discount: number; revenue: number; users: Set<number> }>();
+    for (let i = windowDays - 1; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      byDay.set(d.toISOString().slice(0, 10), { redemptions: 0, discount: 0, revenue: 0, users: new Set() });
+    }
+    for (const r of inWindow) {
+      const key = r.createdAt.toISOString().slice(0, 10);
+      const bucket = byDay.get(key);
+      if (!bucket) continue;
+      bucket.redemptions += 1;
+      bucket.discount += r.amount;
+      bucket.revenue += r.orderTotal;
+      bucket.users.add(r.userId);
+    }
+    for (const [date, b] of byDay) {
+      timeline.push({
+        date,
+        redemptions: b.redemptions,
+        discount: round2(b.discount),
+        revenue: round2(b.revenue),
+        users: b.users.size,
+      });
+    }
+
+    // ── Per-coupon performance ────────────────────────────────
+    const perCoupon = new Map<number, {
+      coupon: (typeof coupons)[number];
+      redemptions: number;
+      users: Set<number>;
+      discount: number;
+      revenue: number;
+      firstUsedAt: Date | null;
+      lastUsedAt: Date | null;
+    }>();
+    for (const c of coupons) {
+      perCoupon.set(c.id, { coupon: c, redemptions: 0, users: new Set(), discount: 0, revenue: 0, firstUsedAt: null, lastUsedAt: null });
+    }
+    for (const r of redemptions) {
+      const entry = perCoupon.get(r.couponId);
+      if (!entry) continue;
+      entry.redemptions += 1;
+      entry.users.add(r.userId);
+      entry.discount += r.amount;
+      entry.revenue += r.orderTotal;
+      if (!entry.firstUsedAt || r.createdAt < entry.firstUsedAt) entry.firstUsedAt = r.createdAt;
+      if (!entry.lastUsedAt || r.createdAt > entry.lastUsedAt) entry.lastUsedAt = r.createdAt;
+    }
+    const now = Date.now();
+    const couponPerformance = [...perCoupon.values()]
+      .map(({ coupon: c, redemptions, users, discount, revenue, firstUsedAt, lastUsedAt }) => {
+        const scheduled = c.startsAt ? c.startsAt.getTime() > now : false;
+        const expired = c.endsAt ? c.endsAt.getTime() < now : false;
+        const deactivated = c.deactivateAt ? c.deactivateAt.getTime() < now : false;
+        const state = !c.status || deactivated
+          ? 'disabled'
+          : scheduled
+            ? 'scheduled'
+            : expired
+              ? 'expired'
+              : 'active';
+        return {
+          id: c.id,
+          code: c.code,
+          description: c.description,
+          type: c.type,
+          value: c.value,
+          maxDiscount: c.maxDiscount,
+          target: c.target,
+          state,
+          tenantId: c.tenantId,
+          tenantName: tenantById.get(c.tenantId)?.name ?? null,
+          redemptions,
+          uniqueUsers: users.size,
+          discountGiven: round2(discount),
+          revenueGenerated: round2(revenue),
+          avgOrderValue: redemptions ? round2(revenue / redemptions) : 0,
+          avgDiscount: redemptions ? round2(discount / redemptions) : 0,
+          usageLimit: c.usageLimit,
+          perUserLimit: c.perUserLimit,
+          usedCount: c.usedCount,
+          utilizationPct: c.usageLimit ? Math.min(100, Math.round((redemptions / c.usageLimit) * 100)) : null,
+          firstUsedAt,
+          lastUsedAt,
+        };
+      })
+      .sort((a, b) => b.redemptions - a.redemptions || b.discountGiven - a.discountGiven);
+
+    // ── Users who redeemed ────────────────────────────────────
+    const perUser = new Map<number, {
+      userId: number;
+      redemptions: number;
+      discount: number;
+      spend: number;
+      coupons: Map<number, { code: string; uses: number; discount: number }>;
+      firstUsedAt: Date | null;
+      lastUsedAt: Date | null;
+    }>();
+    for (const r of redemptions) {
+      const entry = perUser.get(r.userId) ?? {
+        userId: r.userId, redemptions: 0, discount: 0, spend: 0,
+        coupons: new Map(), firstUsedAt: null, lastUsedAt: null,
+      };
+      entry.redemptions += 1;
+      entry.discount += r.amount;
+      entry.spend += r.orderTotal;
+      const c = entry.coupons.get(r.couponId) ?? { code: r.coupon.code, uses: 0, discount: 0 };
+      c.uses += 1;
+      c.discount += r.amount;
+      entry.coupons.set(r.couponId, c);
+      if (!entry.firstUsedAt || r.createdAt < entry.firstUsedAt) entry.firstUsedAt = r.createdAt;
+      if (!entry.lastUsedAt || r.createdAt > entry.lastUsedAt) entry.lastUsedAt = r.createdAt;
+      perUser.set(r.userId, entry);
+    }
+    const topUsers = [...perUser.values()]
+      .map((u) => {
+        const profile = userById.get(u.userId);
+        return {
+          userId: u.userId,
+          name: profile?.name ?? 'Unknown user',
+          email: profile?.email ?? '',
+          image: profile?.image ?? null,
+          role: profile?.role ?? 'student',
+          redemptions: u.redemptions,
+          totalDiscount: round2(u.discount),
+          totalSpend: round2(u.spend),
+          avgDiscount: u.redemptions ? round2(u.discount / u.redemptions) : 0,
+          coupons: [...u.coupons.values()].map((c) => ({ code: c.code, uses: c.uses, discount: round2(c.discount) })),
+          firstUsedAt: u.firstUsedAt,
+          lastUsedAt: u.lastUsedAt,
+        };
+      })
+      .sort((a, b) => b.totalDiscount - a.totalDiscount || b.redemptions - a.redemptions);
+
+    // ── Courses that sold with a coupon ───────────────────────
+    const perCourse = new Map<number, { redemptions: number; discount: number; revenue: number }>();
+    for (const r of redemptions) {
+      for (const item of itemsByOrder.get(r.orderId) ?? []) {
+        const entry = perCourse.get(item.courseId) ?? { redemptions: 0, discount: 0, revenue: 0 };
+        entry.redemptions += 1;
+        entry.discount += r.amount / Math.max(1, (itemsByOrder.get(r.orderId) ?? []).length);
+        entry.revenue += item.price;
+        perCourse.set(item.courseId, entry);
+      }
+    }
+    const topCourses = [...perCourse.entries()]
+      .map(([courseId, v]) => ({
+        courseId,
+        title: courseById.get(courseId)?.title ?? 'Course',
+        slug: courseById.get(courseId)?.slug ?? '',
+        thumbnail: courseById.get(courseId)?.thumbnail ?? null,
+        redemptions: v.redemptions,
+        discount: round2(v.discount),
+        revenue: round2(v.revenue),
+      }))
+      .sort((a, b) => b.redemptions - a.redemptions || b.revenue - a.revenue)
+      .slice(0, 10);
+
+    // ── Recent redemptions (user + order detail) ──────────────
+    const recentRedemptions = redemptions.slice(0, 50).map((r) => {
+      const profile = userById.get(r.userId);
+      const order = orderById.get(r.orderId);
+      const items = itemsByOrder.get(r.orderId) ?? [];
+      return {
+        id: r.id,
+        couponId: r.couponId,
+        couponCode: r.coupon.code,
+        couponType: r.coupon.type,
+        couponValue: r.coupon.value,
+        tenantId: r.tenantId,
+        tenantName: tenantById.get(r.tenantId)?.name ?? null,
+        userId: r.userId,
+        userName: profile?.name ?? 'Unknown user',
+        userEmail: profile?.email ?? '',
+        userImage: profile?.image ?? null,
+        orderId: r.orderId,
+        invoiceId: order?.invoiceId ?? null,
+        orderStatus: order?.status ?? null,
+        currency: order?.currency ?? 'INR',
+        discount: round2(r.amount),
+        orderTotal: round2(r.orderTotal),
+        courseCount: r.courseCount,
+        courses: items.map((i) => ({ id: i.courseId, title: courseById.get(i.courseId)?.title ?? 'Course' })),
+        createdAt: r.createdAt,
+      };
+    });
+
+    const windowRevenue = round2(inWindow.reduce((n, r) => n + r.orderTotal, 0));
+    const windowDiscount = round2(inWindow.reduce((n, r) => n + r.amount, 0));
+
+    // ── Per-workspace breakdown (platform-wide for super admins) ──
+    const perTenant = new Map<number, { tenantId: number; name: string | null; slug: string | null; redemptions: number; users: Set<number>; discount: number; revenue: number; coupons: Set<number> }>();
+    for (const r of redemptions) {
+      const tenant = tenantById.get(r.tenantId);
+      const entry = perTenant.get(r.tenantId) ?? {
+        tenantId: r.tenantId,
+        name: tenant?.name ?? null,
+        slug: tenant?.slug ?? null,
+        redemptions: 0,
+        users: new Set<number>(),
+        discount: 0,
+        revenue: 0,
+        coupons: new Set<number>(),
+      };
+      entry.redemptions += 1;
+      entry.users.add(r.userId);
+      entry.discount += r.amount;
+      entry.revenue += r.orderTotal;
+      entry.coupons.add(r.couponId);
+      perTenant.set(r.tenantId, entry);
+    }
+    const byTenant = [...perTenant.values()]
+      .map((t) => ({
+        tenantId: t.tenantId,
+        name: t.name,
+        slug: t.slug,
+        redemptions: t.redemptions,
+        uniqueUsers: t.users.size,
+        couponsUsed: t.coupons.size,
+        discountGiven: round2(t.discount),
+        revenueGenerated: round2(t.revenue),
+      }))
+      .sort((a, b) => b.redemptions - a.redemptions || b.discountGiven - a.discountGiven);
+
+    return {
+      windowDays,
+      totals: {
+        redemptions: redemptions.length,
+        uniqueUsers,
+        couponsUsed: new Set(redemptions.map((r) => r.couponId)).size,
+        totalCoupons: coupons.length,
+        activeCoupons: coupons.filter((c) => c.status && (!c.endsAt || c.endsAt.getTime() >= now) && (!c.startsAt || c.startsAt.getTime() <= now)).length,
+        discountGiven: totalDiscount,
+        revenueWithCoupons: totalRevenue,
+        coursesSold: totalCourses,
+        avgOrderValue: redemptions.length ? round2(totalRevenue / redemptions.length) : 0,
+        avgDiscount: redemptions.length ? round2(totalDiscount / redemptions.length) : 0,
+        avgCoursesPerOrder: redemptions.length ? round2(totalCourses / redemptions.length) : 0,
+        discountRatePct: totalRevenue > 0 ? Math.round((totalDiscount / totalRevenue) * 1000) / 10 : 0,
+        windowRedemptions: inWindow.length,
+        windowRevenue,
+        windowDiscount,
+        windowUniqueUsers: new Set(inWindow.map((r) => r.userId)).size,
+      },
+      timeline,
+      coupons: couponPerformance,
+      byTenant,
+      topUsers,
+      topCourses,
+      recentRedemptions,
+    };
+  }
+
   // ── Admin: offers ──────────────────────────────────────────────
   listOffers(status?: string) {
     return this.prisma.offer.findMany({
@@ -811,6 +1152,11 @@ export class AdminCouponsController {
   @Get('summary')
   summary() {
     return this.coupons.summary();
+  }
+
+  @Get('analytics')
+  analytics(@Query('days') days?: string) {
+    return this.coupons.analytics(days ? parseInt(days, 10) : 30);
   }
 
   @Get()

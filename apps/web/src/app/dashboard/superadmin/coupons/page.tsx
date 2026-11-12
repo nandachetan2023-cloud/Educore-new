@@ -4,14 +4,15 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
-  LayoutDashboard, Megaphone, Palette, Plus, BadgePercent, Trash2, X,
+  LayoutDashboard, Megaphone, Plus, BadgePercent, Download, Trash2, TrendingUp, X,
 } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
+import { csvStamp, downloadCsv, toCsv } from '@/lib/csv';
 import { useAuth, useBranding } from '@/lib/providers';
 import { DirectoryShell } from '@/components/directory-shell';
 import { StatTile } from '@/components/stat-tile';
 import type {
-  Category, Coupon, CouponSummary, DiscountTarget, DiscountType, Offer, Paginated,
+  Category, Coupon, CouponSummary, DiscountTarget, DiscountType, Offer,
 } from '@/lib/types';
 import { discountLabel } from '@/lib/types';
 
@@ -77,7 +78,7 @@ export default function AdminCouponsPage() {
   const [msg, setMsg] = useState<string | null>(null);
   const [tenants, setTenants] = useState<{ id: number; name: string }[]>([]);
 
-  const currency = branding?.currency ?? 'USD';
+  const currency = branding?.currency ?? 'INR';
   const fmt = (n: number) => new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(n);
 
   const load = useCallback(() =>
@@ -85,8 +86,8 @@ export default function AdminCouponsPage() {
       api<Coupon[]>('/admin/coupons').then(setCoupons).catch(() => setCoupons([])),
       api<Offer[]>('/admin/offers').then(setOffers).catch(() => setOffers([])),
       api<CouponSummary>('/admin/coupons/summary').then(setSummary).catch(() => setSummary(null)),
-      api<Paginated<CourseOption>>('/courses?perPage=100', { auth: false })
-        .then((r) => setCourses(r.data ?? []))
+      api<CourseOption[]>('/admin/courses')
+        .then((r) => setCourses(Array.isArray(r) ? r : []))
         .catch(() => setCourses([])),
       api<Category[]>('/categories', { auth: false }).then(setCategories).catch(() => setCategories([])),
       api<{ id: number; name: string }[]>('/admin/tenants')
@@ -108,20 +109,29 @@ export default function AdminCouponsPage() {
     setTimeout(() => setMsg(null), 3000);
   };
 
-  const toggleCoupon = async (id: number, status: boolean) => {
-    await api(`/admin/coupons/${id}`, { method: 'PUT', body: JSON.stringify({ status }) });
-    load();
-  };
-
   const toggleOffer = async (id: number, status: boolean) => {
     await api(`/admin/offers/${id}`, { method: 'PUT', body: JSON.stringify({ status }) });
     load();
   };
 
-  const removeCoupon = async (id: number) => {
-    if (!confirm('Delete this coupon? Redemptions already recorded are removed with it.')) return;
-    await api(`/admin/coupons/${id}`, { method: 'DELETE' });
-    load();
+  const exportCouponsCsv = () => {
+    const headers = ['Code', 'Description', 'Type', 'Value', 'Max discount', 'Min order', 'Target', 'Status', 'Used', 'Usage limit', 'Per user limit', 'Starts at', 'Ends at'];
+    const rows = (coupons ?? []).map((c) => [
+      c.code,
+      c.description ?? '',
+      c.type,
+      c.value,
+      c.maxDiscount ?? '',
+      c.minOrderAmount ?? '',
+      c.target,
+      c.status ? 'active' : 'disabled',
+      c.usedCount ?? 0,
+      c.usageLimit ?? 'unlimited',
+      c.perUserLimit ?? 1,
+      c.startsAt ?? '',
+      c.endsAt ?? '',
+    ]);
+    downloadCsv(`coupons-${csvStamp()}`, toCsv(headers, rows));
   };
 
   const removeOffer = async (id: number) => {
@@ -175,13 +185,10 @@ export default function AdminCouponsPage() {
         {
           heading: 'Sales',
           links: [
+            { href: '/dashboard/superadmin/coupons/analytics', label: 'Coupon analytics', icon: TrendingUp },
             { href: '/dashboard/superadmin/coupons', label: 'Coupons & Offers', icon: BadgePercent },
             { href: '/dashboard/superadmin', label: 'Back to Console', icon: LayoutDashboard, match: '' },
           ],
-        },
-        {
-          heading: 'Branding',
-          links: [{ href: '/dashboard/superadmin/white-label', label: 'White-Label & Themes', icon: Palette }],
         },
       ]}
       userName={user?.name ?? 'Super admin'}
@@ -204,6 +211,11 @@ export default function AdminCouponsPage() {
                 Coupon codes shoppers enter at checkout, and offers that discount selected courses
                 automatically. Exactly one promotion is honoured per order — whichever saves the buyer more.
               </p>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={exportCouponsCsv} className="btn-ghost gap-1.5">
+                <Download size={15} /> Export CSV
+              </button>
             </div>
             <div className="text-sm text-muted">Super Admin can view all coupons and schedule future deactivation only. Creation and editing are Admin-only.</div>
           </header>

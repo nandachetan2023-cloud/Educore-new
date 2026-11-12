@@ -259,7 +259,21 @@ export default function CertificateBuilderPage() {
           signature: builder.signature,
         }),
       });
-      const itemsRes = await api<Item[]>('/admin/certificate-builder/items', { method: 'PUT', body: JSON.stringify({ items }) });
+      const itemsRes = await api<Item[]>('/admin/certificate-builder/items', {
+        method: 'PUT',
+        // Send only the layout fields — ids/timestamps are regenerated server-side.
+        body: JSON.stringify({
+          items: items.map((i) => ({
+            elementId: i.elementId,
+            xPosition: i.xPosition,
+            yPosition: i.yPosition,
+            text: i.text,
+            fontSize: i.fontSize,
+            color: i.color,
+            bold: i.bold,
+          })),
+        }),
+      });
       setItems(itemsRes);
       setBaseline(JSON.stringify({ builder, items: itemsRes }));
       setMsg('Certificate layout saved. Every certificate issued from now on will use it.');

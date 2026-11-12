@@ -29,7 +29,7 @@ import { TenantStatusBadge } from '@/components/tenant-status-badge';
 import type { PlatformStats, TenantRow, TenantStatus } from '@/lib/types';
 
 const money = (n: number) =>
-  new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(n);
+  new Intl.NumberFormat(undefined, { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(n);
 
 function Kpi({
   icon: Icon,

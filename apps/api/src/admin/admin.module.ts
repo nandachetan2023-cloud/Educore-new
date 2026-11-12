@@ -22,6 +22,10 @@ class UpdateUserDto {
   @IsOptional() @IsString() @MinLength(8) password?: string;
 }
 
+class ResetPasswordDto {
+  @IsString() @MinLength(8) password!: string;
+}
+
 @ApiTags('admin')
 @Controller('admin')
 @Roles(Principal.ADMIN)
@@ -93,6 +97,12 @@ export class AdminController {
   @Put('users/:id')
   updateUser(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateUserDto) {
     return this.admin.updateUser(id, dto);
+  }
+
+  /** Sets a new password for a workspace account (tenant-scoped). */
+  @Post('users/:id/password')
+  resetUserPassword(@Param('id', ParseIntPipe) id: number, @Body() dto: ResetPasswordDto) {
+    return this.admin.resetUserPassword(id, dto.password);
   }
 
   @Delete('users/:id')

@@ -56,6 +56,7 @@ export interface Me {
   /** The tenant this principal belongs to. Null/absent for the platform superadmin. */
   tenantId?: number | null;
   wallet?: number;
+  twoFactorEnabled?: boolean;
 }
 
 export interface PlanRow {

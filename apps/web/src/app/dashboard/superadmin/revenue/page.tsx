@@ -15,9 +15,10 @@ import { useAuth } from '@/lib/providers';
 import { BarList, LineChart } from '@/components/charts';
 import { SuperAdminShell } from '@/components/superadmin-shell';
 import type { PlatformRevenue } from '@/lib/types';
+import { BackLink } from '@/components/back-link';
 
 const money = (n: number, fraction = 0) =>
-  new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: fraction }).format(n);
+  new Intl.NumberFormat(undefined, { style: 'currency', currency: 'INR', maximumFractionDigits: fraction }).format(n);
 
 const percent = (n: number) => `${n > 0 ? '+' : ''}${n.toFixed(1)}%`;
 
@@ -35,33 +36,6 @@ function Trend({ value }: { value: number }) {
       {down && <TrendingUp className="h-3.5 w-3.5 -scale-y-100" />}
       {percent(value)} vs prior period
     </span>
-  );
-}
-
-function Kpi({
-  icon: Icon,
-  tint,
-  label,
-  value,
-  detail,
-}: {
-  icon: React.ElementType;
-  tint: string;
-  label: string;
-  value: string;
-  detail: string;
-}) {
-  return (
-    <div className="rounded-2xl border border-line bg-card p-5 shadow-sm">
-      <div className="flex items-center justify-between">
-        <p className="text-[13px] font-medium text-muted">{label}</p>
-        <span className={`grid h-10 w-10 place-items-center rounded-xl ${tint}`}>
-          <Icon className="h-5 w-5" />
-        </span>
-      </div>
-      <p className="mt-2 font-display text-[32px] font-semibold leading-tight text-ink">{value}</p>
-      <p className="mt-1 text-xs text-muted">{detail}</p>
-    </div>
   );
 }
 
@@ -109,6 +83,7 @@ export default function RevenuePage() {
 
   return (
     <SuperAdminShell>
+      <BackLink href="/dashboard/superadmin" label="Platform console" />
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="font-display text-3xl font-extrabold tracking-tight text-ink">Revenue</h1>

@@ -152,6 +152,24 @@ export class AdminService {
   }
 
   /** Update a user's profile/role/status (the "U" of user CRUD). */
+  /**
+   * Sets a new password for a workspace account. Scoped to the caller's tenant
+   * by the Prisma extension, so a tenant admin can only reset their own users.
+   */
+  async resetUserPassword(id: number, password: string) {
+    const user = await this.prisma.user.findFirst({ where: { id } });
+    if (!user) throw new NotFoundException('User not found');
+    await this.prisma.user.update({
+      where: { id },
+      data: {
+        password: await argon2.hash(password),
+        passwordResetToken: null,
+        passwordResetExpires: null,
+      },
+    });
+    return { ok: true, userId: id, email: user.email };
+  }
+
   async updateUser(
     id: number,
     dto: {
@@ -164,8 +182,14 @@ export class AdminService {
     if (!user) throw new NotFoundException('User not found');
     if (dto.email) {
       const email = dto.email.toLowerCase();
-      const dupe = await this.prisma.user.findFirst({ where: { email, id: { not: id } } });
-      if (dupe) throw new ConflictException('A user with this email already exists');
+      // The email is a login identifier in both tables — a learner must not be
+      // able to take an address that an admin (or another learner) uses.
+      const [dupeUser, dupeAdmin] = await Promise.all([
+        this.prisma.user.findFirst({ where: { email, id: { not: id } } }),
+        this.prisma.admin.findFirst({ where: { email } }),
+      ]);
+      if (dupeUser) throw new ConflictException('A user with this email already exists');
+      if (dupeAdmin) throw new ConflictException('An admin with this email already exists');
     }
     return this.prisma.user.update({
       where: { id },
@@ -244,8 +268,12 @@ export class AdminService {
    */
   async inviteUser(dto: { name: string; email: string; role: 'student' | 'instructor'; password?: string }) {
     const email = dto.email.toLowerCase();
-    const existing = await this.prisma.user.findFirst({ where: { email } });
-    if (existing) throw new ConflictException('A user with this email already exists');
+    const [existingUser, existingAdmin] = await Promise.all([
+      this.prisma.user.findFirst({ where: { email } }),
+      this.prisma.admin.findFirst({ where: { email } }),
+    ]);
+    if (existingUser) throw new ConflictException('A user with this email already exists');
+    if (existingAdmin) throw new ConflictException('An admin with this email already exists');
     const tempPassword = dto.password?.trim() || randomBytes(6).toString('hex');
     const user = await this.prisma.user.create({
       data: {

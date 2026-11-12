@@ -3,10 +3,10 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, CreditCard, Landmark, Lock, ShieldCheck, Star, Tag, Wallet, X } from 'lucide-react';
+import { ArrowLeft, CreditCard, FlaskConical, Landmark, Lock, ShieldCheck, Star, Tag, Wallet, X } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { useAuth, useBranding } from '@/lib/providers';
-import { Stars } from '@/components/ui';
+
 import type { AppliedPromo, CouponPreview } from '@/lib/types';
 
 interface CartItem {
@@ -31,8 +31,8 @@ interface CartResponse {
   offer: AppliedPromo | null;
   count: number;
 }
-interface Gateways { stripe: boolean; paypal: boolean; razorpay: boolean; razorpayKeyId?: string }
-type GatewayId = 'stripe' | 'paypal' | 'razorpay';
+interface Gateways { stripe: boolean; paypal: boolean; razorpay: boolean; razorpayKeyId?: string; mock?: boolean }
+type GatewayId = 'stripe' | 'paypal' | 'razorpay' | 'mock';
 
 /** Lazily injects Razorpay's checkout widget script (no npm package needed). */
 function loadRazorpayScript(): Promise<void> {
@@ -61,7 +61,7 @@ export default function CartPage() {
   const [codeBusy, setCodeBusy] = useState(false);
   const [codeError, setCodeError] = useState<string | null>(null);
 
-  const currency = branding?.currency ?? 'USD';
+  const currency = branding?.currency ?? 'INR';
   const fmt = (n: number) => new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(n);
 
   const load = () => {
@@ -75,7 +75,7 @@ export default function CartPage() {
     api<Gateways>('/checkout/gateways', { auth: false }).then((g) => {
       setGateways(g);
       // Default to the first gateway that's actually configured.
-      const first = (['stripe', 'paypal', 'razorpay'] as GatewayId[]).find((k) => g[k]);
+      const first = (['stripe', 'paypal', 'razorpay', 'mock'] as GatewayId[]).find((k) => g[k]);
       if (first) setGateway(first);
     }).catch(() => {});
   }, [user, authLoading]);
@@ -269,8 +269,24 @@ export default function CartPage() {
                     </span>
                   </button>
                 )}
+                {gateways?.mock && (
+                  <button
+                    onClick={() => setGateway('mock')}
+                    className={`flex items-center gap-3 rounded-2xl border-2 p-4 text-left transition ${
+                      gateway === 'mock' ? 'border-brand bg-brand-soft/40' : 'border-line bg-card hover:border-brand/40'
+                    }`}
+                  >
+                    <span className="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-surface text-brand">
+                      <FlaskConical className="h-5 w-5" />
+                    </span>
+                    <span>
+                      <span className="block text-sm font-bold text-ink">Test payment</span>
+                      <span className="block text-xs text-muted">Dev only — no real charge</span>
+                    </span>
+                  </button>
+                )}
               </div>
-              {gateways && !gateways.stripe && !gateways.paypal && !gateways.razorpay && (
+              {gateways && !gateways.stripe && !gateways.paypal && !gateways.razorpay && !gateways.mock && (
                 <p className="mt-3 rounded-xl bg-amber-500/10 px-4 py-3 text-sm text-amber-700">
                   No payment gateway is configured on this install yet — free enrollment still works.
                 </p>
@@ -311,7 +327,7 @@ export default function CartPage() {
               {error && <p className="mt-4 rounded-xl bg-red-500/10 px-4 py-3 text-sm text-red-500">{error}</p>}
               <button
                 onClick={checkout}
-                disabled={busy || (payable > 0 && !(gateways?.stripe || gateways?.paypal || gateways?.razorpay))}
+                disabled={busy || (payable > 0 && !(gateways?.stripe || gateways?.paypal || gateways?.razorpay || gateways?.mock))}
                 className="btn-primary mt-6 w-full rounded-xl py-4 text-base"
               >
                 {busy ? 'Processing…' : payable === 0 ? 'Enroll for free' : `Complete Purchase • ${fmt(payable)}`}

@@ -1,10 +1,11 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { ShieldCheck, Search } from 'lucide-react';
+import { Search } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/providers';
 import { SuperAdminShell } from '@/components/superadmin-shell';
+import { BackLink } from '@/components/back-link';
 
 export default function SuperAdminUsersPage() {
   const { user, loading } = useAuth();
@@ -28,6 +29,7 @@ export default function SuperAdminUsersPage() {
   return (
     <SuperAdminShell>
       <div className="container-page py-8">
+        <BackLink href="/dashboard/superadmin" label="Platform console" />
         <h1 className="text-3xl font-extrabold">All Users</h1>
         <p className="text-muted">Platform-wide students, instructors, and admins.</p>
 

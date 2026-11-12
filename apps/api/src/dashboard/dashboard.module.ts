@@ -58,6 +58,42 @@ export class DashboardService {
     };
   }
 
+  /** Recent sales on the instructor's own courses, with their net share of each sale. */
+  async instructorEarnings(instructorId: number, take = 10) {
+    const courses = await this.prisma.course.findMany({
+      where: { instructorId },
+      select: { id: true, title: true, slug: true, thumbnail: true },
+    });
+    const byId = new Map(courses.map((c) => [c.id, c]));
+    if (courses.length === 0) return [];
+
+    const items = await this.prisma.orderItem.findMany({
+      where: { courseId: { in: courses.map((c) => c.id) } },
+      orderBy: { createdAt: 'desc' },
+      take,
+      include: { order: { select: { invoiceId: true, createdAt: true, status: true, currency: true, buyerId: true } } },
+    });
+
+    return items.map((i) => {
+      const rate = i.commissionRate ?? 0;
+      const course = byId.get(i.courseId);
+      return {
+        id: i.id,
+        courseId: i.courseId,
+        courseTitle: course?.title ?? 'Course',
+        courseSlug: course?.slug ?? '',
+        thumbnail: course?.thumbnail ?? null,
+        amount: i.price,
+        commissionRate: rate,
+        net: i.price * (1 - rate / 100),
+        currency: i.order.currency,
+        invoiceId: i.order.invoiceId,
+        status: i.order.status,
+        createdAt: i.order.createdAt,
+      };
+    });
+  }
+
   /** Enrollment/revenue trend + top courses, for the admin analytics charts. */
   async adminAnalytics(days = 30) {
     const range = lastNDays(days);
@@ -289,6 +325,12 @@ export class DashboardController {
   @Get('instructor/analytics')
   instructorAnalytics(@CurrentUser('sub') instructorId: number, @Query('days') days?: string) {
     return this.dashboard.instructorAnalytics(instructorId, days ? parseInt(days, 10) : 30);
+  }
+
+  @Roles(Principal.INSTRUCTOR)
+  @Get('instructor/earnings')
+  instructorEarnings(@CurrentUser('sub') instructorId: number, @Query('take') take?: string) {
+    return this.dashboard.instructorEarnings(instructorId, take ? parseInt(take, 10) : 10);
   }
 }
 

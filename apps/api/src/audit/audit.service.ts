@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ClsService } from 'nestjs-cls';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthPrincipal } from '../common/decorators';
 import { PRINCIPAL_CLS_KEY } from '../common/tenant-context';
@@ -85,5 +86,66 @@ export class AuditService {
     // Super admins have no workspace: their "own" feed is the full platform trail.
     const tenantId = principal.adminRole === 'super_admin' ? undefined : principal.tenantId ?? -1;
     return this.list({ ...opts, tenantId });
+  }
+
+  /**
+   * Paginated, filtered activity feed for a workspace admin. The tenant comes
+   * from the JWT principal (never a query parameter), so one workspace can
+   * never read another workspace's trail.
+   */
+  async listPageForPrincipal(
+    principal: AuthPrincipal,
+    opts: { page?: number; limit?: number; action?: string; entity?: string; q?: string },
+  ) {
+    const tenantId = principal.adminRole === 'super_admin' ? undefined : principal.tenantId ?? -1;
+    const where: Prisma.AuditLogWhereInput = {
+      ...(tenantId !== undefined ? { tenantId } : {}),
+      // "create" should match "coupon.create" — the console filters by verb.
+      ...(opts.action ? { action: { contains: opts.action, mode: 'insensitive' } } : {}),
+      ...(opts.entity ? { entity: { equals: opts.entity, mode: 'insensitive' } } : {}),
+      ...(opts.q
+        ? {
+            OR: [
+              { actorName: { contains: opts.q, mode: 'insensitive' } },
+              { action: { contains: opts.q, mode: 'insensitive' } },
+              { entity: { contains: opts.q, mode: 'insensitive' } },
+            ],
+          }
+        : {}),
+    };
+
+    const page = Math.max(1, opts.page ?? 1);
+    const limit = Math.min(200, Math.max(1, opts.limit ?? 25));
+
+    const [rows, total] = await Promise.all([
+      this.prisma.auditLog.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        take: limit,
+        skip: (page - 1) * limit,
+      }),
+      this.prisma.auditLog.count({ where }),
+    ]);
+
+    return {
+      items: rows.map((r) => ({
+        id: r.id,
+        action: r.action,
+        actorName: r.actorName,
+        // Actor identity is stored in one column; admins log in with an email.
+        actorEmail: r.actorName?.includes('@') ? r.actorName : null,
+        actorRole: r.actorRole,
+        entity: r.entity,
+        entityId: r.entityId,
+        meta: (r.meta ?? null) as Record<string, unknown> | null,
+        ipAddress: r.ip,
+        tenantId: r.tenantId,
+        createdAt: r.createdAt,
+      })),
+      total,
+      page,
+      limit,
+      pages: Math.max(1, Math.ceil(total / limit)),
+    };
   }
 }

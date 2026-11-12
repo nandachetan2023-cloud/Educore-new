@@ -56,7 +56,7 @@ export default function ContactSettingsPage() {
     if (!user || user.principal !== 'admin') { router.push('/login?next=/dashboard/admin/settings/contact'); return; }
     if (user.adminRole !== 'super_admin') { router.push('/dashboard/admin'); return; }
 
-    api<Record<string, string>>('/cms/settings', { auth: false })
+    api<Record<string, string>>('/cms/settings')
       .then((s) => {
         setFields({
           title: s['contact.title'] ?? DEFAULTS.title,

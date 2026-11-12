@@ -1,6 +1,9 @@
 import { Body, Controller, Get, Inject, Injectable, Module, Param, ParseIntPipe, Put, Query } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { IsHexColor, IsOptional, IsString } from 'class-validator';
+import { Type } from 'class-transformer';
+import {
+  IsArray, IsBoolean, IsHexColor, IsNumber, IsOptional, IsString, ValidateNested,
+} from 'class-validator';
 import { ApiTags } from '@nestjs/swagger';
 import { PrismaClient } from '@prisma/client';
 import { RAW_PRISMA } from '../prisma/prisma.module';
@@ -15,6 +18,73 @@ export interface Branding {
   secondaryColor: string;
   currency: string;
   commissionRate: number;
+}
+
+/** One tier of the storefront's pricing table. */
+export interface LandingPlan {
+  name: string;
+  tagline: string;
+  price: number;
+  currency: string;
+  period: string;
+  features: string[];
+  ctaLabel: string;
+  ctaHref: string;
+  highlight: boolean;
+}
+
+export const DEFAULT_LANDING_PLANS: LandingPlan[] = [
+  {
+    name: 'Starter',
+    tagline: 'Dip your toes in the catalogue',
+    price: 0,
+    currency: 'INR',
+    period: 'forever',
+    features: ['Free preview lessons', 'Course catalogue browsing', 'Community discussions'],
+    ctaLabel: 'Start learning',
+    ctaHref: '/login?next=/courses',
+    highlight: false,
+  },
+  {
+    name: 'Pro',
+    tagline: 'The full library, at your pace',
+    price: 2999,
+    currency: 'INR',
+    period: 'per year',
+    features: ['Every course, unlocked', 'Downloadable resources & projects', 'Certificates on completion', 'Priority Q&A with instructors'],
+    ctaLabel: 'Go Pro',
+    ctaHref: '/login?next=/courses',
+    highlight: true,
+  },
+  {
+    name: 'Team',
+    tagline: 'Upskill a whole team',
+    price: 9999,
+    currency: 'INR',
+    period: 'per year',
+    features: ['Everything in Pro', 'Seats for your whole team', 'Team progress dashboard', 'Dedicated onboarding'],
+    ctaLabel: 'Talk to us',
+    ctaHref: '/login?next=/contact',
+    highlight: false,
+  },
+];
+
+const PLANS_SETTING_KEY = 'landing.plans';
+
+class LandingPlanDto {
+  @IsString() name!: string;
+  @IsOptional() @IsString() tagline?: string;
+  @IsOptional() @IsNumber() price?: number;
+  @IsOptional() @IsString() currency?: string;
+  @IsOptional() @IsString() period?: string;
+  @IsOptional() @IsArray() @IsString({ each: true }) features?: string[];
+  @IsOptional() @IsString() ctaLabel?: string;
+  @IsOptional() @IsString() ctaHref?: string;
+  @IsOptional() @IsBoolean() highlight?: boolean;
+}
+
+class LandingPlansDto {
+  @IsArray() @ValidateNested({ each: true }) @Type(() => LandingPlanDto) plans!: LandingPlanDto[];
 }
 
 class BrandingDto {
@@ -71,6 +141,11 @@ export class BrandingService {
     return null;
   }
 
+  /** Public wrapper so the controller can resolve a tenant without exposing internals. */
+  async resolveTenantIdPublic(host?: string, devTenantId?: number): Promise<number | null> {
+    return this.resolveTenantId(host, devTenantId);
+  }
+
   /** Public so an authenticated caller (the admin/branding edit page) can fetch its own current tenant's branding directly, without going through host/dev-tenant guesswork. */
   async getForTenant(tenantId: number | null): Promise<Branding> {
     const defaults = this.config.get<Branding>('brand')!;
@@ -94,7 +169,7 @@ export class BrandingService {
       favicon: overrides.favicon || defaults.favicon || '/brand/favicon.ico',
       primaryColor,
       secondaryColor,
-      currency: overrides.currency || defaults.currency || 'USD',
+      currency: overrides.currency || defaults.currency || 'INR',
       commissionRate:
         overrides.commissionRate != null && overrides.commissionRate !== ''
           ? parseFloat(overrides.commissionRate)
@@ -126,6 +201,61 @@ export class BrandingService {
       where: field ? { tenantId, key: `${SETTING_PREFIX}${field}` } : { tenantId, key: { startsWith: SETTING_PREFIX } },
     });
     return this.getForTenant(tenantId);
+  }
+
+  /**
+   * Storefront pricing table. Tenant override first, then the platform-level
+   * copy, then the built-in defaults — same fallback chain as the branding.
+   */
+  async getPlans(tenantId: number | null): Promise<LandingPlan[]> {
+    const rows = await this.raw.setting.findMany({
+      where: { key: PLANS_SETTING_KEY, OR: [{ tenantId }, { tenantId: null }] },
+      orderBy: { tenantId: 'desc' },
+    });
+    for (const row of rows) {
+      if (!row.value) continue;
+      try {
+        const parsed = JSON.parse(row.value);
+        if (Array.isArray(parsed) && parsed.length) {
+          return parsed.map((p: Partial<LandingPlan>) => ({
+            name: String(p.name ?? 'Plan'),
+            tagline: String(p.tagline ?? ''),
+            price: Number(p.price ?? 0),
+            currency: String(p.currency ?? 'INR'),
+            period: String(p.period ?? ''),
+            features: Array.isArray(p.features) ? p.features.map(String) : [],
+            ctaLabel: String(p.ctaLabel ?? 'Get started'),
+            ctaHref: String(p.ctaHref ?? '/courses'),
+            highlight: Boolean(p.highlight),
+          }));
+        }
+      } catch {
+        // Malformed override — fall through to the next source.
+      }
+    }
+    return DEFAULT_LANDING_PLANS;
+  }
+
+  async updatePlans(tenantId: number | null, plans: LandingPlanDto[]): Promise<LandingPlan[]> {
+    const cleaned = plans.map((p) => ({
+      name: p.name.trim(),
+      tagline: p.tagline?.trim() ?? '',
+      price: Number(p.price ?? 0),
+      currency: p.currency ?? 'INR',
+      period: p.period?.trim() ?? '',
+      features: (p.features ?? []).map((f) => f.trim()).filter(Boolean),
+      ctaLabel: p.ctaLabel?.trim() || 'Get started',
+      ctaHref: p.ctaHref?.trim() || '/courses',
+      highlight: Boolean(p.highlight),
+    }));
+    const value = JSON.stringify(cleaned);
+    const existing = await this.raw.setting.findFirst({ where: { tenantId, key: PLANS_SETTING_KEY } });
+    if (existing) {
+      await this.raw.setting.update({ where: { id: existing.id }, data: { value } });
+    } else {
+      await this.raw.setting.create({ data: { tenantId, key: PLANS_SETTING_KEY, value } });
+    }
+    return this.getPlans(tenantId);
   }
 }
 
@@ -160,6 +290,31 @@ export class BrandingController {
   @Put('admin/branding/reset')
   reset(@CurrentUser('tenantId') tenantId: number | null) {
     return this.branding.reset(tenantId ?? null);
+  }
+
+  // ── Storefront pricing table (landing page) ──────────────
+
+  @Public()
+  @Get('landing/plans')
+  async plans(@Query('host') host?: string, @Query('devTenant') devTenant?: string) {
+    const devTenantId = devTenant ? Number(devTenant) : undefined;
+    const tenantId = await this.branding.resolveTenantIdPublic(
+      host,
+      Number.isFinite(devTenantId as number) ? devTenantId : undefined,
+    );
+    return this.branding.getPlans(tenantId);
+  }
+
+  @Roles(Principal.ADMIN)
+  @Get('admin/landing/plans')
+  myPlans(@CurrentUser('tenantId') tenantId: number | null) {
+    return this.branding.getPlans(tenantId ?? null);
+  }
+
+  @Roles(Principal.ADMIN)
+  @Put('admin/landing/plans')
+  savePlans(@CurrentUser('tenantId') tenantId: number | null, @Body() dto: LandingPlansDto) {
+    return this.branding.updatePlans(tenantId ?? null, dto.plans);
   }
 }
 

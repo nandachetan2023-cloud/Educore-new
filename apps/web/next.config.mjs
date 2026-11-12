@@ -24,7 +24,14 @@ export default function config(phase) {
       remotePatterns: [{ protocol: 'https', hostname: '**' }],
     },
     async rewrites() {
-      return [{ source: '/api/:path*', destination: `${apiOrigin}/api/:path*` }];
+      return [
+        { source: '/api/:path*', destination: `${apiOrigin}/api/:path*` },
+        // Uploaded files (logos, thumbnails, lesson resources) are stored by the
+        // API and referenced as relative URLs — proxy them so they resolve from
+        // whatever origin the storefront is served on instead of breaking with a
+        // hard-coded API host.
+        { source: '/uploads/:path*', destination: `${apiOrigin}/uploads/:path*` },
+      ];
     },
   };
 }

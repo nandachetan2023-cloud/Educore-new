@@ -46,7 +46,13 @@ export function ImageUpload({ value, onChange, label = 'Image' }: { value?: stri
             type="file"
             accept="image/*"
             className="hidden"
-            onChange={(e) => e.target.files?.[0] && upload(e.target.files[0])}
+            onChange={(e) => {
+              const input = e.target;
+              const file = input.files?.[0];
+              if (!file) return;
+              upload(file);
+              input.value = '';
+            }}
           />
         </label>
       </div>

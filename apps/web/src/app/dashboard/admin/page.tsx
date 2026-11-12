@@ -4,11 +4,11 @@ import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
-  BadgeDollarSign, BookOpen, ChevronRight, CreditCard, FileText, LayoutDashboard,
-  ShoppingCart, Star, BadgePercent, TrendingDown, TrendingUp, UserCog, Users, Wallet, Palette,
-  Award, Cog,
+  BadgeDollarSign, BookOpen, CreditCard, FileText, FolderTree, KeyRound, LayoutDashboard,
+  ShoppingCart, Star, BadgePercent, TrendingDown, TrendingUp, UserCog, Users, Wallet,
+  Award, Cog, ShieldCheck,
 } from 'lucide-react';
-import { api } from '@/lib/api';
+import { api, ApiError } from '@/lib/api';
 import { useAuth, useBranding } from '@/lib/providers';
 import { LineChart } from '@/components/charts';
 import { DirectoryShell } from '@/components/directory-shell';
@@ -80,13 +80,15 @@ export default function AdminConsole() {
   const branding = useBranding();
   const router = useRouter();
   const [tab, setTab] = useState<Tab>('overview');
-  const [stats, setStats] = useState<Stats | null>({ students: 124, instructors: 18, courses: 9, orders: 42, revenue: 12850, trends: { students: 3.2, instructors: 1.5, courses: 8, orders: -2.1, revenue: 12.4 } });
-  const [analytics, setAnalytics] = useState<Analytics | null>({ enrollmentsByDay: [{date:'2026-10-01',count:3},{date:'2026-10-02',count:5},{date:'2026-10-03',count:8}], revenueByDay: [{date:'2026-10-01',amount:1200},{date:'2026-10-02',amount:2100},{date:'2026-10-03',amount:3400}], topCourses: [{title:'Intro to Design',enrollments:45},{title:'Digital Marketing',enrollments:32}] });
-  const [activity, setActivity] = useState<ActivityRow[] | null>([{id:1,studentName:'Alice',courseTitle:'Intro to Design',amount:99.99,currency:'USD',status:'approved',createdAt:'2026-10-27T10:00:00Z'}]);
-  const [rows, setRows] = useState<any[]>([{id:1,title:'Intro to Design',instructor:{name:'Dr. Jane'},_count:{chapters:6}}]);
+  const [stats, setStats] = useState<Stats | null>(null);
+  const [analytics, setAnalytics] = useState<Analytics | null>(null);
+  const [activity, setActivity] = useState<ActivityRow[] | null>(null);
+  const [rows, setRows] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [actionNote, setActionNote] = useState<string | null>(null);
 
-  const currency = branding?.currency ?? 'USD';
+  const currency = branding?.currency ?? 'INR';
   const money = (n: number) => new Intl.NumberFormat(undefined, { style: 'currency', currency, maximumFractionDigits: 0 }).format(n);
 
   useEffect(() => {
@@ -100,6 +102,9 @@ export default function AdminConsole() {
     api<ActivityRow[]>('/dashboard/admin/activity').then(setActivity).catch(() => setActivity([]));
   }, [user, authLoading]);
 
+  const [courseStatus, setCourseStatus] = useState<'pending' | 'approved' | 'rejected' | 'all'>('pending');
+  const [counts, setCounts] = useState<{ courses: number; instructors: number; reviews: number; withdraws: number }>({ courses: 0, instructors: 0, reviews: 0, withdraws: 0 });
+
   const endpoints: Record<Exclude<Tab, 'overview'>, string> = {
     courses: '/admin/courses?status=pending',
     instructors: '/admin/instructors?status=pending',
@@ -107,22 +112,63 @@ export default function AdminConsole() {
     withdraws: '/admin/withdraws',
   };
 
+  const loadCounts = useCallback(() => {
+    Promise.all([
+      api<any[]>('/admin/courses?status=pending').catch(() => []),
+      api<any[]>('/admin/instructors?status=pending').catch(() => []),
+      api<any[]>('/admin/reviews').catch(() => []),
+      api<any[]>('/admin/withdraws?status=pending').catch(() => []),
+    ]).then(([courses, instructors, reviews, withdraws]) => {
+      setCounts({
+        courses: courses.length,
+        instructors: instructors.length,
+        reviews: reviews.length,
+        withdraws: withdraws.filter((w) => w.status === 'pending').length,
+      });
+    });
+  }, []);
+
   const loadTab = useCallback((t: Tab) => {
     if (t === 'overview') return;
     setLoading(true);
-    const mockCourses = [{id:1,title:'Intro to Design',instructor:{name:'Dr. Jane'},_count:{chapters:6}},{id:2,title:'Digital Marketing',instructor:{name:'Prof. Smith'},_count:{chapters:4}},{id:3,title:'UI/UX Fundamentals',instructor:{name:'Alex Chen'},_count:{chapters:8}}];
-    const mockInstructors = [{id:1,name:'Dr. Jane',email:'jane@acme.test',_count:{courses:3}},{id:2,name:'Prof. Smith',email:'smith@acme.test',_count:{courses:2}}];
-    const mockReviews = [{id:1,rating:5,review:'Excellent course!',user:{name:'Alice'},course:{title:'Intro to Design'}},{id:2,rating:4,review:'Very informative.',user:{name:'Bob'},course:{title:'Digital Marketing'}}];
-    const mockWithdraws = [{id:1,amount:250,status:'pending',instructor:{name:'Dr. Jane',wallet:500}},{id:2,amount:120,status:'approved',instructor:{name:'Prof. Smith',wallet:300}}];
-    api<any[]>(endpoints[t]).then((data) => setRows(data && data.length ? data : (t === 'courses' ? mockCourses : t === 'instructors' ? mockInstructors : t === 'reviews' ? mockReviews : t === 'withdraws' ? mockWithdraws : []))).catch(() => setRows(t === 'courses' ? mockCourses : t === 'instructors' ? mockInstructors : t === 'reviews' ? mockReviews : t === 'withdraws' ? mockWithdraws : [])).finally(() => setLoading(false));
-  }, []);
+    const path = t === 'courses'
+      ? `/admin/courses${courseStatus === 'all' ? '' : `?status=${courseStatus}`}`
+      : endpoints[t];
+    api<any[]>(path)
+      .then((data) => setRows(Array.isArray(data) ? data : []))
+      .catch(() => setRows([]))
+      .finally(() => setLoading(false));
+  }, [courseStatus]);
 
-  useEffect(() => { loadTab(tab); }, [tab]);
+  useEffect(() => { loadTab(tab); }, [tab, courseStatus]);
+  useEffect(() => { loadCounts(); }, [loadCounts]);
 
   const act = async (path: string) => {
-    await api(path, { method: 'POST' });
-    loadTab(tab);
-    api<Stats>('/dashboard/admin').then(setStats).catch(() => {});
+    setActionError(null);
+    setActionNote(null);
+    const run = () => api(path, { method: 'POST' });
+    try {
+      await run();
+      setActionNote('Done — the list has been refreshed.');
+      loadTab(tab);
+      api<Stats>('/dashboard/admin').then(setStats).catch(() => {});
+    } catch (e) {
+      // A failed fetch (API restarting, network hiccup) is worth one retry.
+      if (!(e instanceof ApiError)) {
+        try {
+          await run();
+          setActionNote('Done — the list has been refreshed.');
+          loadTab(tab);
+          api<Stats>('/dashboard/admin').then(setStats).catch(() => {});
+          return;
+        } catch (retryErr) {
+          e = retryErr;
+        }
+      }
+      const detail = e instanceof ApiError ? `${e.message} (HTTP ${e.status})` : e instanceof Error ? e.message : 'Unknown error';
+      setActionError(detail);
+      console.error('[admin action failed]', path, e);
+    }
   };
 
   if (authLoading) return <div className="container-page py-20 text-center text-muted">Loading…</div>;
@@ -136,7 +182,19 @@ export default function AdminConsole() {
         {
           heading: 'Workspace',
           links: [
-            ...TABS.map((t) => ({ label: t.label, icon: t.icon, active: tab === t.key, onClick: () => setTab(t.key) })),
+            ...TABS.map((t) => ({
+              label: t.label,
+              icon: t.icon,
+              active: tab === t.key,
+              onClick: () => setTab(t.key),
+              badge:
+                t.key === 'courses' ? counts.courses || undefined
+                : t.key === 'instructors' ? counts.instructors || undefined
+                : t.key === 'reviews' ? counts.reviews || undefined
+                : t.key === 'withdraws' ? counts.withdraws || undefined
+                : undefined,
+            })),
+            { href: '/dashboard/admin/categories', label: 'Categories', icon: FolderTree },
             { href: '/dashboard/admin/users', label: 'Users & Directory', icon: Users },
             { href: '/dashboard/admin/logs', label: 'Activity logs', icon: FileText },
           ],
@@ -155,6 +213,8 @@ export default function AdminConsole() {
             // super-admin's area — tenant admins get bounced back silently,
             // so only surface the link to that tier.
             ...(user?.adminRole === 'super_admin' ? [{ href: '/dashboard/admin/settings', label: 'Settings', icon: Cog }] : []),
+            ...(user?.adminRole !== 'super_admin' ? [{ href: '/dashboard/admin/sso', label: 'Single sign-on', icon: ShieldCheck }] : []),
+            { href: '/dashboard/admin/settings/password', label: 'Change password', icon: KeyRound },
             { href: '/dashboard/admin/settings/certificate', label: 'Certificate builder', icon: Award },
             { href: '/dashboard/admin/certificates', label: 'Certificates', icon: Award },
           ],
@@ -295,25 +355,61 @@ export default function AdminConsole() {
 
             {tab !== 'overview' && (
               <section>
+                {actionError && (
+                  <div className="mb-4 flex flex-wrap items-center gap-3 rounded-2xl border border-red-200 bg-red-50 px-5 py-3 text-sm font-medium text-red-600">
+                    <span className="flex-1">{actionError}</span>
+                    <button onClick={() => setActionError(null)} className="rounded-full border border-red-300 px-3 py-1 text-xs font-bold hover:bg-red-100">Dismiss</button>
+                  </div>
+                )}
+                {actionNote && !actionError && (
+                  <div className="mb-4 rounded-2xl border border-green-200 bg-green-50 px-5 py-3 text-sm font-medium text-green-700">{actionNote}</div>
+                )}
                 {loading ? (
                   <div className="rounded-2xl border border-[#EAE6DB] bg-white p-12 text-center text-[#93897B]">Loading…</div>
                 ) : (
                   <>
-                    {tab === 'courses' && (
-                      <ModTable
-                        rows={rows}
-                        empty="No courses awaiting review."
-                        render={(c) => (
-                          <>
-                            <div className="flex-1">
-                              <div className="font-semibold">{c.title}</div>
-                              <div className="text-sm text-[#93897B]">by {c.instructor?.name} · {c._count?.chapters} sections</div>
-                            </div>
+                {tab === 'courses' && (
+                  <>
+                    <div className="mb-4 flex flex-wrap gap-2">
+                      {([
+                        { id: 'pending', label: `Pending (${counts.courses})` },
+                        { id: 'approved', label: 'Approved' },
+                        { id: 'rejected', label: 'Rejected' },
+                        { id: 'all', label: 'All' },
+                      ] as const).map((f) => (
+                        <button
+                          key={f.id}
+                          onClick={() => setCourseStatus(f.id)}
+                          className={`rounded-full px-3.5 py-1.5 text-[13px] font-semibold transition ${
+                            courseStatus === f.id ? 'bg-brand text-white' : 'border border-[#E6E2D8] bg-white text-[#6E6A5F] hover:text-ink'
+                          }`}
+                        >
+                          {f.label}
+                        </button>
+                      ))}
+                    </div>
+                    <ModTable
+                      rows={rows}
+                      empty={courseStatus === 'pending' ? 'No courses awaiting review.' : 'No courses here.'}
+                      render={(c) => (
+                        <>
+                          <div className="flex-1">
+                            <div className="font-semibold">{c.title}</div>
+                            <div className="text-sm text-[#93897B]">by {c.instructor?.name} · {c._count?.chapters} sections</div>
+                          </div>
+                          <span className={`badge ${c.isApproved === 'approved' ? 'bg-green-500/15 text-green-600' : c.isApproved === 'rejected' ? 'bg-red-500/15 text-red-500' : 'bg-amber-500/15 text-amber-600'}`}>
+                            {c.isApproved}
+                          </span>
+                          {c.isApproved === 'pending' ? (
                             <Approve onApprove={() => act(`/admin/courses/${c.id}/approve`)} onReject={() => act(`/admin/courses/${c.id}/reject`)} />
-                          </>
-                        )}
-                      />
-                    )}
+                          ) : (
+                            <span className="text-xs text-[#A6A296]">{c.status}</span>
+                          )}
+                        </>
+                      )}
+                    />
+                  </>
+                )}
 
                     {tab === 'instructors' && (
                       <ModTable

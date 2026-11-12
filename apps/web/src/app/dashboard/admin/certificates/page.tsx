@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
-import Link from 'next/link';
+
 import { useRouter } from 'next/navigation';
 import { Award, Plus } from 'lucide-react';
 import { useAuth } from '@/lib/providers';

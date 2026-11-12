@@ -1,6 +1,5 @@
 'use client';
 
-import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { Lock, ShieldCheck } from 'lucide-react';
 import { useBranding } from '@/lib/providers';

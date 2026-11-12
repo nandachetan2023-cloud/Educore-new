@@ -8,6 +8,18 @@ import { useAuth } from '@/lib/providers';
 import { ImageUpload } from '@/components/image-upload';
 import type { Branding } from '@/lib/types';
 
+export interface LandingPlan {
+  name: string;
+  tagline: string;
+  price: number;
+  currency: string;
+  period: string;
+  features: string[];
+  ctaLabel: string;
+  ctaHref: string;
+  highlight: boolean;
+}
+
 type DomainStatus = 'none' | 'pending' | 'verified' | 'failed';
 
 interface DomainInfo {
@@ -35,11 +47,15 @@ export default function WhiteLabelPage() {
   const router = useRouter();
 
   const [form, setForm] = useState<Branding>({
-    name: '', logo: '', favicon: '', primaryColor: '#4f46e5', secondaryColor: '#0ea5e9', currency: 'USD', commissionRate: 20,
+    name: '', logo: '', favicon: '', primaryColor: '#4f46e5', secondaryColor: '#0ea5e9', currency: 'INR', commissionRate: 20,
   });
   const [domain, setDomain] = useState<DomainInfo | null>(null);
   const [domainInput, setDomainInput] = useState('');
   const [loading, setLoading] = useState(true);
+  const [plans, setPlans] = useState<LandingPlan[]>([]);
+  const [plansMsg, setPlansMsg] = useState<string | null>(null);
+  const [plansErr, setPlansErr] = useState<string | null>(null);
+  const [plansBusy, setPlansBusy] = useState(false);
 
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
@@ -55,12 +71,33 @@ export default function WhiteLabelPage() {
     Promise.all([
       api<Branding>('/admin/branding'),
       api<DomainInfo>('/admin/domain'),
-    ]).then(([b, d]) => {
+      api<LandingPlan[]>('/admin/landing/plans'),
+    ]).then(([b, d, p]) => {
       setForm(b);
       setDomain(d);
       setDomainInput(d.customDomain ?? '');
+      setPlans(p ?? []);
     }).catch(() => {}).finally(() => setLoading(false));
   }, [user, authLoading]);
+
+  const setPlan = (index: number, patch: Partial<LandingPlan>) =>
+    setPlans((list) => list.map((p, i) => (i === index ? { ...p, ...patch } : p)));
+
+  const savePlans = async () => {
+    setPlansBusy(true); setPlansMsg(null); setPlansErr(null);
+    try {
+      const saved = await api<LandingPlan[]>('/admin/landing/plans', {
+        method: 'PUT',
+        body: JSON.stringify({ plans }),
+      });
+      setPlans(saved);
+      setPlansMsg('Landing plans saved — the storefront pricing table is updated.');
+    } catch (e) {
+      setPlansErr(e instanceof ApiError ? e.message : 'Failed to save the plans');
+    } finally {
+      setPlansBusy(false);
+    }
+  };
 
   const set = (k: keyof Branding) => (v: string) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -159,6 +196,88 @@ export default function WhiteLabelPage() {
                   onChange={(e) => setForm((f) => ({ ...f, commissionRate: Number(e.target.value) }))} />
               </div>
             </div>
+          </div>
+
+          {/* Landing page plans */}
+          <div className="card space-y-5 p-6">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="font-bold">Landing page plans</h2>
+                <p className="mt-1 text-sm text-muted">The pricing table shown on the storefront homepage.</p>
+              </div>
+              <button onClick={savePlans} disabled={plansBusy} className="btn-primary shrink-0">
+                {plansBusy ? 'Saving…' : 'Save plans'}
+              </button>
+            </div>
+
+            {plansMsg && <p className="rounded-lg bg-green-500/10 px-3 py-2 text-sm text-green-600">{plansMsg}</p>}
+            {plansErr && <p className="rounded-lg bg-red-500/10 px-3 py-2 text-sm text-red-500">{plansErr}</p>}
+
+            <div className="space-y-4">
+              {plans.map((plan, i) => (
+                <div key={i} className="rounded-xl border border-line p-4">
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div>
+                      <label className="label">Plan name</label>
+                      <input className="input" value={plan.name} onChange={(e) => setPlan(i, { name: e.target.value })} />
+                    </div>
+                    <div>
+                      <label className="label">Tagline</label>
+                      <input className="input" value={plan.tagline} onChange={(e) => setPlan(i, { tagline: e.target.value })} />
+                    </div>
+                    <div className="grid grid-cols-3 gap-3">
+                      <div>
+                        <label className="label">Price</label>
+                        <input type="number" min="0" step="1" className="input" value={plan.price} onChange={(e) => setPlan(i, { price: Number(e.target.value) })} />
+                      </div>
+                      <div>
+                        <label className="label">Currency</label>
+                        <select className="input" value={plan.currency} onChange={(e) => setPlan(i, { currency: e.target.value })}>
+                          {['INR', 'USD', 'EUR', 'GBP', 'AED', 'AUD', 'CAD', 'SGD'].map((c) => <option key={c} value={c}>{c}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="label">Period</label>
+                        <input className="input" value={plan.period} placeholder="per year" onChange={(e) => setPlan(i, { period: e.target.value })} />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="label">Button label</label>
+                        <input className="input" value={plan.ctaLabel} onChange={(e) => setPlan(i, { ctaLabel: e.target.value })} />
+                      </div>
+                      <div>
+                        <label className="label">Button link</label>
+                        <input className="input" value={plan.ctaHref} placeholder="/courses" onChange={(e) => setPlan(i, { ctaHref: e.target.value })} />
+                      </div>
+                    </div>
+                  </div>
+                  <div className="mt-4">
+                    <label className="label">Features (one per line)</label>
+                    <textarea
+                      rows={4}
+                      className="input"
+                      value={plan.features.join('\n')}
+                      onChange={(e) => setPlan(i, { features: e.target.value.split('\n') })}
+                    />
+                  </div>
+                  <label className="mt-3 flex items-center gap-2 text-sm text-ink">
+                    <input type="checkbox" checked={plan.highlight} onChange={(e) => setPlan(i, { highlight: e.target.checked })} className="h-4 w-4 rounded accent-[var(--brand-primary)]" />
+                    Highlight as “Most popular”
+                  </label>
+                </div>
+              ))}
+            </div>
+
+            <button
+              className="btn-ghost"
+              onClick={() => setPlans((list) => [...list, {
+                name: 'New plan', tagline: '', price: 0, currency: form.currency || 'INR', period: 'per month',
+                features: [], ctaLabel: 'Get started', ctaHref: '/courses', highlight: false,
+              }])}
+            >
+              ＋ Add plan
+            </button>
           </div>
 
           {/* Custom Domain */}

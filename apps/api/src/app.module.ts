@@ -16,6 +16,7 @@ import { TenantsModule } from './tenants/tenants.module';
 import { PlansModule } from './plans/plans.module';
 import { AuthModule } from './auth/auth.module';
 import { CoursesModule } from './courses/courses.module';
+import { AiModule } from './ai/ai.module';
 import { CategoriesModule } from './categories/categories.module';
 import { TaxonomyModule } from './taxonomy/taxonomy.module';
 import { CartModule } from './cart/cart.module';
@@ -87,6 +88,7 @@ import { PlatformSettingsModule } from './platform-settings/platform-settings.mo
     TenantsModule,
     PlansModule,
     CoursesModule,
+    AiModule,
     CategoriesModule,
     TaxonomyModule,
     CartModule,

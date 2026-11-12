@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import {
+  BadRequestException,
   Body,
+  ConflictException,
   Controller,
   Delete,
   Get,
@@ -38,20 +40,45 @@ class CategoriesService {
     });
   }
 
-  create(dto: CategoryDto) {
+  async create(dto: CategoryDto) {
+    await this.assertUnique(dto.name, dto.parentId);
     return this.prisma.courseCategory.create({
       data: { ...dto, slug: slugify(dto.name, { lower: true, strict: true }) },
     });
   }
 
-  update(id: number, dto: CategoryDto) {
+  async update(id: number, dto: CategoryDto) {
+    await this.assertUnique(dto.name, dto.parentId, id);
     return this.prisma.courseCategory.update({
       where: { id },
       data: { ...dto, slug: slugify(dto.name, { lower: true, strict: true }) },
     });
   }
 
-  remove(id: number) {
+  /** Names (and the derived slugs) are unique per tenant — say so plainly. */
+  private async assertUnique(name: string, parentId?: number, ignoreId?: number) {
+    const slug = slugify(name, { lower: true, strict: true });
+    const clash = await this.prisma.courseCategory.findFirst({
+      where: {
+        ...(ignoreId ? { id: { not: ignoreId } } : {}),
+        OR: [{ name }, { slug }],
+      },
+      select: { id: true, name: true, parentId: true },
+    });
+    if (!clash) return;
+    if (parentId && clash.parentId === parentId) {
+      throw new ConflictException(`"${name}" already exists under this parent`);
+    }
+    throw new ConflictException(`A category named "${clash.name}" already exists`);
+  }
+
+  async remove(id: number) {
+    const courses = await this.prisma.course.count({ where: { categoryId: id } });
+    if (courses > 0) {
+      throw new BadRequestException(
+        `This category still has ${courses} course${courses === 1 ? '' : 's'} — move them to another category first`,
+      );
+    }
     return this.prisma.courseCategory.delete({ where: { id } });
   }
 }

@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
-import { ArrowLeft, Copy, Globe, Palette } from 'lucide-react';
+import { ArrowLeft, Globe, Palette } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { useAuth } from '@/lib/providers';
 import { SuperAdminShell } from '@/components/superadmin-shell';

@@ -2,12 +2,13 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { BadgePercent, LayoutDashboard, Sparkles } from 'lucide-react';
+import { BadgePercent, Download, LayoutDashboard, Sparkles, TrendingUp } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAuth, useBranding } from '@/lib/providers';
 import { DirectoryShell } from '@/components/directory-shell';
 import { StatTile } from '@/components/stat-tile';
-import type { Coupon, CouponSummary, Paginated } from '@/lib/types';
+import { csvStamp, downloadCsv, toCsv } from '@/lib/csv';
+import type { Coupon, CouponSummary } from '@/lib/types';
 import { discountLabel } from '@/lib/types';
 
 interface CourseMap { id: number; title: string }
@@ -40,7 +41,7 @@ export default function MyCouponsPage() {
   const [editing, setEditing] = useState<Coupon | null>(null);
   const [form, setForm] = useState<Partial<Coupon>>({ type: 'percentage', value: 10, target: 'all', perUserLimit: 1, status: true });
 
-  const currency = branding?.currency ?? 'USD';
+  const currency = branding?.currency ?? 'INR';
   const fmt = (n: number) => new Intl.NumberFormat(undefined, { style: 'currency', currency, maximumFractionDigits: 0 }).format(n);
 
   const refresh = async () => {
@@ -59,8 +60,8 @@ export default function MyCouponsPage() {
     Promise.all([
       api<Coupon[]>('/admin/coupons').then(setCoupons).catch(() => setCoupons([])),
       api<CouponSummary>('/admin/coupons/summary').then(setSummary).catch(() => setSummary(null)),
-      api<Paginated<{ id: number; title: string }>>('/courses?perPage=100', { auth: false })
-        .then((r) => setCourses((r.data ?? []).map((c) => ({ id: c.id, title: c.title }))))
+      api<{ id: number; title: string }[]>('/admin/courses')
+        .then((r) => setCourses((Array.isArray(r) ? r : []).map((c) => ({ id: c.id, title: c.title }))))
         .catch(() => setCourses([])),
     ]).finally(() => setLoading(false));
   }, [user, authLoading, router]);
@@ -86,6 +87,26 @@ export default function MyCouponsPage() {
 
   const titleOf = (id: number) => courses.find((c) => c.id === id)?.title ?? `Course #${id}`;
 
+  const exportCouponsCsv = () => {
+    const headers = ['Code', 'Description', 'Type', 'Value', 'Max discount', 'Min order', 'Target', 'Status', 'Used', 'Usage limit', 'Per user limit', 'Starts at', 'Ends at'];
+    const rows = (coupons ?? []).map((c) => [
+      c.code,
+      c.description ?? '',
+      c.type,
+      c.value,
+      c.maxDiscount ?? '',
+      c.minOrderAmount ?? '',
+      c.target,
+      c.status ? 'active' : 'disabled',
+      c.usedCount ?? 0,
+      c.usageLimit ?? 'unlimited',
+      c.perUserLimit ?? 1,
+      c.startsAt ?? '',
+      c.endsAt ?? '',
+    ]);
+    downloadCsv(`coupons-${csvStamp()}`, toCsv(headers, rows));
+  };
+
   return (
     <DirectoryShell
       eyebrow="Admin Console"
@@ -93,6 +114,7 @@ export default function MyCouponsPage() {
         {
           heading: 'Sales',
           links: [
+            { href: '/dashboard/admin/coupons/analytics', label: 'Coupon analytics', icon: TrendingUp },
             { href: '/dashboard/admin/coupons', label: 'My Coupons', icon: BadgePercent },
             { href: '/dashboard/admin', label: 'Back to Console', icon: LayoutDashboard, match: '' },
           ],
@@ -115,6 +137,12 @@ export default function MyCouponsPage() {
               </p>
             </div>
             <div className="flex gap-2">
+              <Link href="/dashboard/admin/coupons/analytics" className="btn-ghost gap-1.5">
+                <TrendingUp size={15} /> Analytics
+              </Link>
+              <button className="btn-ghost gap-1.5" onClick={exportCouponsCsv}>
+                <Download size={15} /> Export CSV
+              </button>
               <button className="btn-ghost gap-1.5" onClick={() => setShowPresets((s) => !s)}>
                 <Sparkles size={15} /> Coupon builder
               </button>

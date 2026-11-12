@@ -236,7 +236,7 @@ function HomeEditor() {
   const [msg, setMsg] = useState<string | null>(null);
 
   const load = useCallback(() => {
-    api<any>('/cms/home', { auth: false }).then((h) => {
+    api<any>('/cms/home').then((h) => {
       if (h.hero) setHero({ title: h.hero.title ?? '', subTitle: h.hero.subTitle ?? '', image: h.hero.image ?? '' });
       setFeatures(h.features ?? []);
       setTestimonials(h.testimonials ?? []);
@@ -366,7 +366,7 @@ function BlogEditor() {
   const [msg, setMsg] = useState<string | null>(null);
 
   const load = useCallback(() => {
-    api<{ data: any[] }>('/blog', { auth: false }).then((r) => setPosts(r.data)).catch(() => {});
+    api<{ data: any[] }>('/blog').then((r) => setPosts(r.data)).catch(() => {});
   }, []);
   useEffect(load, [load]);
 
@@ -467,7 +467,7 @@ function ContactEditor() {
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
-    api<Record<string, string>>('/cms/settings', { auth: false })
+    api<Record<string, string>>('/cms/settings')
       .then((s) => {
         setFields({
           title: s['contact.title'] ?? CONTACT_DEFAULTS.title,

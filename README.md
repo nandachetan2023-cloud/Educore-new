@@ -44,22 +44,19 @@ npm install
 # Point DATABASE_URL at your PostgreSQL, create the `educore` database, then:
 cd apps/api
 npx prisma db push        # create tables from schema
+# Set SEED_ADMIN_PASSWORD, SEED_USER_PASSWORD and SEED_STAFF_PASSWORD in .env first.
 npm run prisma:seed       # demo admin/instructor/student + taxonomy
 npm run start:dev         # API on http://localhost:4000/api
 ```
 
 API docs (dev only): **http://localhost:4000/api/docs**
 
-## Demo credentials (from seed)
+## Demo seed accounts
 
-| Role         | Email                    | Password   | Can do                                        |
-| ------------ | ------------------------ | ---------- | --------------------------------------------- |
-| Super-admin  | superadmin@gmail.com     | password   | Everything + **branding** + **manage admins** |
-| Admin        | admin@gmail.com          | password   | Content moderation, approvals, payouts        |
-| Instructor   | instructor@gmail.com     | 12345678   | Create/sell courses, request payouts          |
-| Student      | user@gmail.com           | 12345678   | Buy, learn, review                            |
-
-Log in for all of them at `/login`; tick **"administrator"** for the two admin tiers.
+The seed creates demo admin, instructor, and student accounts. Set unique passwords
+in your local `.env` using `SEED_ADMIN_PASSWORD`, `SEED_USER_PASSWORD`, and
+`SEED_STAFF_PASSWORD`. Passwords are intentionally not included in this repository.
+Log in at `/login`; tick **"administrator"** for the admin accounts.
 
 ### Admin tiers
 
@@ -102,6 +99,18 @@ Flow: `POST /checkout` with `gateway: "razorpay"` creates the order server-side 
 An all-free cart (e.g. a 100%-off coupon) is fulfilled immediately without touching any gateway.
 
 > Stripe and PayPal are still `.env`-only — the admin screen currently manages Razorpay credentials.
+
+## Instructor course builder
+
+`/dashboard/instructor/courses` is the instructor's course list; `/dashboard/instructor/courses/:id` is the course builder (LearnCraft-style three-pane layout: curriculum on the left, lesson editor in the middle, add-content tiles + progress on the right).
+
+- **Create** — "Create Course" creates an untitled draft via `POST /courses` and drops the instructor straight into the builder; there is no separate wizard.
+- **Curriculum** — sections and lessons are created inline (`POST /courses/:courseId/content/chapters`, `POST /courses/:courseId/content/lessons`) and reordered by dragging (`PUT .../chapters/reorder`, `PUT .../lessons/reorder/:chapterId`).
+- **Lesson editor** — title, type (video/article/PDF/audio/quiz/assignment/live class/SCORM/embed), source + URL, notes with a small formatting toolbar, uploaded resources, and free-preview/downloadable flags.
+- **AI outline** — `POST /courses/:id/generate-outline` builds sections and lessons from a topic. With `OPENAI_API_KEY` set it asks the model for the structure; without one it falls back to a built-in template generator, so the feature always works offline.
+- **Preview** — `GET /courses/preview/:id` returns the course as a learner sees it (owner only), so drafts can be reviewed before they go live; published courses link to the public page.
+- **Publish** — `POST /courses/:id/submit` queues the course for admin review (`isApproved: pending`). A tenant admin approves it from Admin → Courses, which sets it `active` and puts it on the marketplace.
+- **Settings** — the details page also holds seat limit (`capacity`, 0 = unlimited), certificate on completion and Q&A toggles.
 
 ## Implemented endpoints
 

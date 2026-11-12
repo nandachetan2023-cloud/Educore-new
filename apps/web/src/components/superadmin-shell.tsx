@@ -1,7 +1,7 @@
 'use client';
 
 import {
-  Award, BadgePercent, Building2, CreditCard, FileText, FolderOpen, LayoutDashboard,
+  BadgePercent, Building2, CreditCard, FileText, FolderOpen, LayoutDashboard,
   Palette, Phone, ShieldCheck, Users, Wallet, TrendingUp, BookText, FileSearch, Cog,
 } from 'lucide-react';
 import { useAuth, useBranding } from '@/lib/providers';

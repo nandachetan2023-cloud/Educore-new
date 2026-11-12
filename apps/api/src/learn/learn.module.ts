@@ -32,7 +32,10 @@ export class LearnService {
     return enrollment;
   }
 
-  /** Courses the student is enrolled in, with progress %. */
+  /**
+   * Courses the student has purchased (enrolled in), with progress and the
+   * module/lesson breakdown used by the My Learning screen.
+   */
   async myCourses(userId: number) {
     const enrollments = await this.prisma.enrollment.findMany({
       where: { userId, haveAccess: true },
@@ -43,28 +46,90 @@ export class LearnService {
             title: true,
             slug: true,
             thumbnail: true,
-            instructor: { select: { name: true } },
-            _count: { select: { lessons: true } },
+            price: true,
+            instructor: { select: { name: true, image: true } },
+            chapters: {
+              where: { status: true },
+              orderBy: { order: 'asc' },
+              select: {
+                id: true,
+                title: true,
+                order: true,
+                lessons: {
+                  where: { status: true },
+                  orderBy: { order: 'asc' },
+                  select: { id: true, title: true },
+                },
+              },
+            },
           },
         },
       },
       orderBy: { createdAt: 'desc' },
     });
 
-    const results = [];
-    for (const e of enrollments) {
-      const completed = await this.prisma.watchHistory.count({
-        where: { userId, courseId: e.courseId, isCompleted: true },
-      });
-      const total = e.course._count.lessons || 1;
-      results.push({
-        ...e.course,
-        progress: Math.round((completed / total) * 100),
-        completedLessons: completed,
-        totalLessons: e.course._count.lessons,
-      });
+    const courseIds = enrollments.map((e) => e.courseId);
+    let history: { courseId: number; lessonId: number }[] = [];
+    let activity: { courseId: number; _max: { updatedAt: Date | null } }[] = [];
+    if (courseIds.length > 0) {
+      [history, activity] = await Promise.all([
+        this.prisma.watchHistory.findMany({
+          where: { userId, courseId: { in: courseIds }, isCompleted: true },
+          select: { courseId: true, lessonId: true },
+        }),
+        this.prisma.watchHistory.groupBy({
+          by: ['courseId'],
+          where: { userId, courseId: { in: courseIds } },
+          _max: { updatedAt: true },
+        }),
+      ]);
     }
-    return results;
+
+    const completedByCourse = new Map<number, Set<number>>();
+    for (const h of history) {
+      if (!completedByCourse.has(h.courseId)) completedByCourse.set(h.courseId, new Set());
+      completedByCourse.get(h.courseId)!.add(h.lessonId);
+    }
+    const lastActivityByCourse = new Map(
+      activity.map((a) => [a.courseId, a._max.updatedAt ?? null]),
+    );
+
+    return enrollments.map((e) => {
+      const done = completedByCourse.get(e.courseId) ?? new Set<number>();
+      const modules = e.course.chapters.map((ch) => {
+        const lessons = ch.lessons.map((l) => ({ ...l, completed: done.has(l.id) }));
+        const completedLessons = lessons.filter((l) => l.completed).length;
+        return {
+          id: ch.id,
+          title: ch.title,
+          order: ch.order,
+          totalLessons: lessons.length,
+          completedLessons,
+          completed: lessons.length > 0 && completedLessons === lessons.length,
+          lessons,
+        };
+      });
+      const allLessons = modules.flatMap((m) => m.lessons);
+      const completedLessons = allLessons.filter((l) => l.completed).length;
+      const next = allLessons.find((l) => !l.completed) ?? null;
+      const nextModule = next ? modules.find((m) => m.lessons.some((l) => l.id === next.id)) : null;
+
+      return {
+        ...e.course,
+        instructor: e.course.instructor,
+        modules,
+        totalModules: modules.length,
+        completedModules: modules.filter((m) => m.completed).length,
+        progress: allLessons.length ? Math.round((completedLessons / allLessons.length) * 100) : 0,
+        completedLessons,
+        totalLessons: allLessons.length,
+        nextLesson: next
+          ? { id: next.id, title: next.title, moduleId: nextModule?.id ?? null, moduleTitle: nextModule?.title ?? null }
+          : null,
+        lastActivityAt: lastActivityByCourse.get(e.courseId) ?? null,
+        enrolledAt: e.createdAt,
+      };
+    });
   }
 
   /** Full player payload for an enrolled course. */

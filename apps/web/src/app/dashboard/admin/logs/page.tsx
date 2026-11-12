@@ -3,31 +3,47 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { ChevronLeft, Search } from 'lucide-react';
-import { api } from '@/lib/api';
+import { api, ApiError } from '@/lib/api';
 import type { AuditLogEntry } from '@/lib/types';
 
 export default function AdminLogsPage() {
   const [logs, setLogs] = useState<AuditLogEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [action, setAction] = useState('');
   const [entity, setEntity] = useState('');
   const [q, setQ] = useState('');
+  const [search, setSearch] = useState('');
 
   async function load() {
     setLoading(true);
-    const params = new URLSearchParams({ page: String(page), limit: '25' });
-    if (action) params.set('action', action);
-    if (entity) params.set('entity', entity);
-    if (q) params.set('q', q);
-    const data = await api<{ items?: AuditLogEntry[]; total?: number }>(`/admin/audit-logs/mine?${params.toString()}`);
-    setLogs(data.items ?? []);
-    setTotal(data.total ?? 0);
-    setLoading(false);
+    setError(null);
+    try {
+      const params = new URLSearchParams({ page: String(page), limit: '25' });
+      if (action) params.set('action', action);
+      if (entity) params.set('entity', entity);
+      if (search) params.set('q', search);
+      const data = await api<{ items?: AuditLogEntry[]; total?: number }>(`/admin/audit-logs/mine?${params.toString()}`);
+      setLogs(data.items ?? []);
+      setTotal(data.total ?? 0);
+    } catch (e) {
+      setLogs([]);
+      setTotal(0);
+      setError(e instanceof ApiError ? `${e.message} (HTTP ${e.status})` : 'Could not load the activity logs');
+    } finally {
+      setLoading(false);
+    }
   }
 
-  useEffect(() => { load(); }, [page, action, entity, q]);
+  // Debounce the free-text search so typing doesn't fire a request per keystroke.
+  useEffect(() => {
+    const t = setTimeout(() => { setSearch(q); setPage(1); }, 300);
+    return () => clearTimeout(t);
+  }, [q]);
+
+  useEffect(() => { load(); }, [page, action, entity, search]);
 
   return (
     <div className="p-6 space-y-6" style={{ fontFamily: 'var(--font-admin-body)' }}>
@@ -96,6 +112,8 @@ export default function AdminLogsPage() {
           <tbody>
             {loading ? (
               <tr><td colSpan={7} className="p-6 text-center text-ink/40">Loading…</td></tr>
+            ) : error ? (
+              <tr><td colSpan={7} className="p-6 text-center text-red-500">{error}</td></tr>
             ) : logs.length === 0 ? (
               <tr><td colSpan={7} className="p-6 text-center text-ink/40">No activity logs yet</td></tr>
             ) : (

@@ -117,7 +117,7 @@ export class PlatformSettingsService {
       if (override !== undefined && override !== '') return override;
       switch (key) {
         case 'currency':
-          return this.config.get<string>('brand.currency') ?? 'USD';
+          return this.config.get<string>('brand.currency') ?? 'INR';
         case 'commissionRate':
           return String(this.config.get<number>('brand.commissionRate') ?? 20);
         case 'supportEmail':

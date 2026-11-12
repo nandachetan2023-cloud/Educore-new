@@ -141,8 +141,28 @@ model Tenant {
   owner        Admin         @relation("TenantOwner", fields: [ownerAdminId], references: [id])
   admins       Admin[]       @relation("TenantMembers")
   subscription Subscription?
+  ssoConfig    SsoConfig?
 
   @@map("tenants")
+}
+
+/// Per-tenant SAML 2.0 identity-provider configuration. Populated from the
+/// IdP's metadata URL, which yields the SSO entry point and signing cert.
+model SsoConfig {
+  id          Int      @id @default(autoincrement())
+  tenantId    Int      @unique @map("tenant_id")
+  enabled     Boolean  @default(false)
+  label       String?  @map("label")
+  metadataUrl String?  @map("metadata_url")
+  entryPoint  String?  @map("entry_point")
+  issuer      String?  @map("issuer")
+  cert        String?  @db.Text
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+
+  @@map("sso_configs")
 }
 
 model Plan {
@@ -192,9 +212,13 @@ model Admin {
   email           String    @unique
   role            AdminRole @default(admin)
   emailVerifiedAt DateTime? @map("email_verified_at")
+  emailVerifyToken String?  @map("email_verify_token")
+  emailVerifyExpires DateTime? @map("email_verify_expires")
   password        String
   passwordResetToken String? @map("password_reset_token")
   passwordResetExpires DateTime? @map("password_reset_expires")
+  twoFactorSecret String?   @map("two_factor_secret")
+  twoFactorEnabled Boolean  @default(false) @map("two_factor_enabled")
   bio             String?
   rememberToken   String?   @map("remember_token") @db.VarChar(100)
   tenantId        Int?      @map("tenant_id")
@@ -220,9 +244,13 @@ model User {
   gender          Gender?
   document        String?
   emailVerifiedAt DateTime?     @map("email_verified_at")
+  emailVerifyToken String?      @map("email_verify_token")
+  emailVerifyExpires DateTime?  @map("email_verify_expires")
   password        String
   passwordResetToken String?  @map("password_reset_token")
   passwordResetExpires DateTime? @map("password_reset_expires")
+  twoFactorSecret String?   @map("two_factor_secret")
+  twoFactorEnabled Boolean  @default(false) @map("two_factor_enabled")
   facebook        String?
   x               String?
   linkedin        String?
@@ -242,6 +270,7 @@ model User {
   courses        Course[]                      @relation("InstructorCourses")
   certificates   Certificate[]                 @relation("StudentCertificates")
   carts          Cart[]
+  wishlists      Wishlist[]
   orders         Order[]                       @relation("BuyerOrders")
   enrollments    Enrollment[]
   reviews        Review[]
@@ -349,8 +378,10 @@ model Course {
   chapters    CourseChapter[]
   lessons     CourseChapterLession[]
   carts       Cart[]
+  wishlists   Wishlist[]
   enrollments Enrollment[]
   reviews     Review[]
+  tags        CourseTag[]
 
   @@index([tenantId])
   @@index([instructorId])
@@ -408,6 +439,37 @@ model CourseChapterLession {
   @@map("course_chapter_lessions")
 }
 
+model Tag {
+  id        Int      @id @default(autoincrement())
+  tenantId  Int      @default(0) @map("tenant_id")
+  name      String
+  slug      String
+  status    Boolean  @default(true)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  courses CourseTag[]
+
+  @@unique([tenantId, slug])
+  @@index([tenantId])
+  @@map("tags")
+}
+
+model CourseTag {
+  id       Int @id @default(autoincrement())
+  tenantId Int @default(0) @map("tenant_id")
+  courseId Int @map("course_id")
+  tagId    Int @map("tag_id")
+
+  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  tag    Tag    @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@unique([courseId, tagId])
+  @@index([tenantId])
+  @@index([tagId])
+  @@map("course_tags")
+}
+
 // ─────────────────────────────────────────────────────────────
 //  Commerce
 // ─────────────────────────────────────────────────────────────
@@ -424,6 +486,24 @@ model Cart {
 
   @@index([tenantId])
   @@map("carts")
+}
+
+model Wishlist {
+  id        Int      @id @default(autoincrement())
+  tenantId  Int      @default(0) @map("tenant_id")
+  userId    Int      @map("user_id")
+  courseId  Int      @map("course_id")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, courseId])
+  @@index([tenantId])
+  @@index([userId])
+  @@index([courseId])
+  @@map("wishlists")
 }
 
 model Order {
@@ -1006,14 +1086,17 @@ model FooterColumnTwo {
 }
 
 model CustomPage {
-  id        Int      @id @default(autoincrement())
-  tenantId  Int      @default(0) @map("tenant_id")
-  title     String
-  slug      String
-  content   String?  @db.Text
-  status    Boolean  @default(true)
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  id             Int      @id @default(autoincrement())
+  tenantId       Int      @default(0) @map("tenant_id")
+  title          String
+  slug           String
+  content        String?  @db.Text
+  blocks         Json?
+  seoTitle       String?  @map("seo_title")
+  seoDescription String?  @map("seo_description")
+  status         Boolean  @default(true)
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
 
   @@unique([tenantId, slug])
   @@index([tenantId])

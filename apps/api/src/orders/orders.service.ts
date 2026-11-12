@@ -13,7 +13,7 @@ import { PayPalService } from '../payments/paypal.service';
 import { RazorpayService } from '../payments/razorpay.service';
 import { netPrice } from '../cart/cart.module';
 
-export type Gateway = 'stripe' | 'paypal' | 'razorpay';
+export type Gateway = 'stripe' | 'paypal' | 'razorpay' | 'mock';
 
 @Injectable()
 export class OrdersService {
@@ -28,6 +28,11 @@ export class OrdersService {
     private config: ConfigService,
   ) {}
 
+  /** Mock checkout exists only outside production so local/dev installs can pay end-to-end. */
+  private get mockEnabled() {
+    return this.config.get<string>('env') !== 'production';
+  }
+
   /** Which gateways are actually usable on this install (have credentials configured). */
   async availableGateways() {
     const razorpay = await this.razorpay.getConfig();
@@ -36,6 +41,7 @@ export class OrdersService {
       paypal: this.paypal.enabled,
       razorpay: razorpay.enabled,
       razorpayKeyId: razorpay.enabled ? razorpay.keyId : undefined,
+      mock: this.mockEnabled,
     };
   }
 
@@ -110,6 +116,10 @@ export class OrdersService {
       };
     }
 
+    if (gateway === 'mock') {
+      if (!this.mockEnabled) throw new BadRequestException('Unknown payment gateway');
+    }
+
     const web = this.config.get<string>('webUrl');
     const receipt = {
       subtotal: promo.subtotal,
@@ -118,6 +128,16 @@ export class OrdersService {
       coupon: promo.coupon,
       offer: promo.offer,
     };
+
+    if (gateway === 'mock') {
+      await this.fulfill(order.id, `MOCK-${nanoid(8)}`);
+      return {
+        free: true,
+        orderId: order.id,
+        invoiceId: order.invoiceId,
+        ...receipt,
+      };
+    }
 
     if (gateway === 'paypal') {
       const paypalOrder = await this.paypal.createOrder({

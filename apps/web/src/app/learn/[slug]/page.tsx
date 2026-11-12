@@ -63,6 +63,11 @@ export default function PlayerPage({ params }: { params: { slug: string } }) {
     setActive(content);
     autoCompletedRef.current = content.completed;
     try {
+      const url = new URL(window.location.href);
+      url.searchParams.set('lesson', String(lessonId));
+      window.history.replaceState(null, '', url.toString());
+    } catch { /* history unavailable */ }
+    try {
       const saved = localStorage.getItem(`educore.note.${lessonId}`);
       setNote(saved ?? '');
     } catch { setNote(''); }
@@ -72,10 +77,12 @@ export default function PlayerPage({ params }: { params: { slug: string } }) {
   useEffect(() => {
     if (authLoading) return;
     if (!user) { router.push(`/login?next=/learn/${slug}`); return; }
-    loadPlayer()
+      loadPlayer()
       .then((p) => {
-        const first = p.chapters.flatMap((c) => c.lessons)[0];
-        if (first) return openLesson(first.id);
+        const flat = p.chapters.flatMap((c) => c.lessons);
+        const requested = Number(new URLSearchParams(window.location.search).get('lesson'));
+        const target = flat.find((l) => l.id === requested) ?? flat.find((l) => !l.completed) ?? flat[0];
+        if (target) return openLesson(target.id);
       })
       .catch(() => setPlayer(null))
       .finally(() => setLoading(false));
@@ -147,8 +154,8 @@ export default function PlayerPage({ params }: { params: { slug: string } }) {
       <div className="container-page py-6">
         {/* Top bar */}
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <Link href="/dashboard" className="flex items-center gap-2 text-sm font-medium text-muted hover:text-brand">
-            <ArrowLeft className="h-4 w-4" /> Back to Course Dashboard
+          <Link href="/dashboard/my-learning" className="flex items-center gap-2 text-sm font-medium text-muted hover:text-brand">
+            <ArrowLeft className="h-4 w-4" /> Back to My Learning
           </Link>
           <div className="flex rounded-full border border-line bg-card p-1 shadow-sm">
             {tabs.map((t) => (
@@ -272,7 +279,7 @@ export default function PlayerPage({ params }: { params: { slug: string } }) {
                         <Link href={`/courses/${player.slug}`} className="flex items-center gap-2.5 rounded-lg px-2 py-2 text-muted transition hover:bg-surface hover:text-brand">
                           <BookOpen className="h-4 w-4" /> Course overview page
                         </Link>
-                        <Link href="/dashboard" className="flex items-center gap-2.5 rounded-lg px-2 py-2 text-muted transition hover:bg-surface hover:text-brand">
+                        <Link href="/dashboard/my-learning" className="flex items-center gap-2.5 rounded-lg px-2 py-2 text-muted transition hover:bg-surface hover:text-brand">
                           <Play className="h-4 w-4" /> My learning dashboard
                         </Link>
                       </div>

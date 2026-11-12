@@ -24,7 +24,7 @@ import { Public, Roles, CurrentUser } from '../common/decorators';
 import { Principal } from '../common/enums';
 
 class CheckoutDto {
-  @IsOptional() @IsIn(['stripe', 'paypal', 'razorpay']) gateway?: Gateway;
+  @IsOptional() @IsIn(['stripe', 'paypal', 'razorpay', 'mock']) gateway?: Gateway;
   /** Admin-issued discount code. Re-validated server-side; never trusted from the client. */
   @IsOptional() @IsString() couponCode?: string;
 }

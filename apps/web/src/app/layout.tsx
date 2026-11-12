@@ -29,7 +29,7 @@ const DEFAULT_BRANDING: Branding = {
   favicon: '/brand/favicon.ico',
   primaryColor: '#4f46e5',
   secondaryColor: '#0ea5e9',
-  currency: 'USD',
+  currency: 'INR',
   commissionRate: 20,
 };
 
@@ -128,7 +128,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       className={`${inter.variable} ${serifDisplay.variable}`}
       style={{ '--brand-primary': primaryRgb, '--brand-secondary': secondaryRgb } as React.CSSProperties}
     >
-      <body>
+      <body className="font-sans">
         <Providers branding={branding}>
           <Chrome announcement={announcement}>{children}</Chrome>
         </Providers>

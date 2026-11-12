@@ -18,6 +18,7 @@ import { ApiError, api } from '@/lib/api';
 import { useAuth } from '@/lib/providers';
 import { SuperAdminShell } from '@/components/superadmin-shell';
 import type { PlatformEnv, PlatformSettingsValues } from '@/lib/types';
+import { BackLink } from '@/components/back-link';
 
 const ENV_TINT: Record<string, string> = {
   production: 'bg-green-500/15 text-green-600',
@@ -57,7 +58,7 @@ export default function PlatformSettingsPage() {
   const router = useRouter();
   const [env, setEnv] = useState<PlatformEnv | null>(null);
   const [settings, setSettings] = useState<PlatformSettingsValues | null>(null);
-  const [form, setForm] = useState({ supportEmail: '', currency: 'USD', commissionRate: 20, defaultLanguage: 'en' });
+  const [form, setForm] = useState({ supportEmail: '', currency: 'INR', commissionRate: 20, defaultLanguage: 'en' });
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -116,6 +117,7 @@ export default function PlatformSettingsPage() {
 
   return (
     <SuperAdminShell>
+      <BackLink href="/dashboard/superadmin" label="Platform console" />
       <div>
         <h1 className="font-display text-3xl font-extrabold tracking-tight text-ink">Platform Settings</h1>
         <p className="mt-1 text-[15px] text-muted">

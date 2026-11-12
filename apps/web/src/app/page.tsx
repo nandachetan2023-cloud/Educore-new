@@ -9,12 +9,42 @@ import {
 import { api } from '@/lib/api';
 import { useBranding } from '@/lib/providers';
 import { CourseCard } from '@/components/course-card';
-import { CategoryIcon, Stars } from '@/components/ui';
 import type { CourseCard as Course, Category, Paginated, HomeCms, StorefrontOffer } from '@/lib/types';
+
+export interface LandingPlan {
+  name: string;
+  tagline: string;
+  price: number;
+  currency: string;
+  period: string;
+  features: string[];
+  ctaLabel: string;
+  ctaHref: string;
+  highlight: boolean;
+}
 
 const HERO_IMG = 'https://images.unsplash.com/photo-1543269865-cbf427effbad?w=1200&q=80&auto=format&fit=crop';
 
 const WORDMARKS = ['TECHGIANT', 'CREATIVE-X', 'GLOBAL-EDU', 'FUTURE-TECH', 'INNOVATE'];
+const REPLACEMENT_BRAND_LOGOS = [
+  { src: '/assets/testimonial_logo.png', alt: 'HubSpot' },
+  { src: '/assets/testimonial_logo_2.png', alt: 'Google' },
+  { src: '/assets/testimonial_logo_3.png', alt: 'Scopic' },
+  { src: '/assets/testimonial_logo_4.png', alt: 'Trustpilot' },
+];
+const CATEGORY_IMAGES = [
+  { keywords: ['development', 'programming', 'coding', 'software'], image: '/assets/category_img_3.jpg' },
+  { keywords: ['security', 'artificial intelligence', 'ai', 'technology'], image: '/assets/category_img_12.jpg' },
+  { keywords: ['business', 'finance', 'entrepreneur'], image: '/assets/category_img_2.jpg' },
+  { keywords: ['data science', 'analytics', 'statistics'], image: '/assets/category_img_1.jpg' },
+  { keywords: ['design', 'photography', 'creative'], image: '/assets/category_img_10.jpg' },
+  { keywords: ['marketing', 'growth', 'sales'], image: '/assets/category_img_9.jpg' },
+];
+const getCategoryImage = (name: string) => {
+  const normalizedName = name.toLowerCase();
+  return CATEGORY_IMAGES.find(({ keywords }) => keywords.some((keyword) => normalizedName.includes(keyword)))?.image
+    ?? '/assets/category_img_8.jpg';
+};
 
 const DEFAULT_PERKS = [
   { icon: Users, tint: 'bg-blue-500/10 text-brand', title: 'Expert Community', desc: 'Connect with thousands of students and share knowledge in real-time.' },
@@ -37,6 +67,7 @@ export default function HomePage() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [cms, setCms] = useState<HomeCms | null>(null);
   const [offers, setOffers] = useState<StorefrontOffer[]>([]);
+  const [plans, setPlans] = useState<LandingPlan[]>([]);
   const [loading, setLoading] = useState(true);
   const [heroQuery, setHeroQuery] = useState('');
 
@@ -46,19 +77,25 @@ export default function HomePage() {
       api<Category[]>('/categories', { auth: false }).catch(() => []),
       api<HomeCms>('/cms/home', { auth: false }).catch(() => null),
       api<StorefrontOffer[]>('/coupons/offers', { auth: false }).catch(() => []),
-    ]).then(([c, cats, home, liveOffers]) => {
+      api<LandingPlan[]>('/landing/plans', { auth: false }).catch(() => []),
+    ]).then(([c, cats, home, liveOffers, landingPlans]) => {
       if (c) setCourses(c.data);
       setCategories(cats ?? []);
       setCms(home);
       setOffers(liveOffers ?? []);
+      setPlans(landingPlans ?? []);
       setLoading(false);
     });
   }, []);
 
   const brandName = branding?.name ?? 'EduCore';
+  const currency = branding?.currency ?? 'INR';
   const featured = courses.slice(0, 3);
   const topCategories = categories.slice(0, 8);
   const testimonials = (cms?.testimonials?.length ? cms.testimonials : []).slice(0, 3);
+  const hasDefaultBrandIcons = Boolean(
+    cms?.brands?.length && cms.brands.every((brand) => /\/brand_icon_[1-6]\.png$/.test(brand.image)),
+  );
 
   const submitHeroSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -141,6 +178,87 @@ export default function HomePage() {
         </div>
       </section>
 
+      {/* ── Plans & pricing ───────────────────────────────── */}
+      {plans.length > 0 && (
+        <section id="plans" className="border-t border-line bg-card pt-8 pb-16 lg:pt-10 lg:pb-20">
+          <div className="container-page">
+            <div className="mx-auto max-w-2xl text-center">
+              <span className="section-pill">Plans &amp; pricing</span>
+              <h2 className="mt-2 font-display text-3xl font-semibold tracking-tight text-ink sm:text-4xl">
+                Pick the plan that fits your learning
+              </h2>
+              <p className="mt-2 pb-8 text-muted">
+                Start free, unlock everything, or upskill your whole team. Every plan includes the
+                {' '}{brandName} course library.
+              </p>
+            </div>
+
+            <div className="mt-6 grid gap-6 md:grid-cols-3">
+              {plans.map((plan) => (
+                <div
+                  key={plan.name}
+                  className={`relative flex flex-col rounded-2xl border p-7 shadow-sm transition ${
+                    plan.highlight
+                      ? 'z-20 border-brand bg-brand text-white shadow-lift lg:-mt-4 lg:mb-[-1rem]'
+                      : 'border-line bg-surface'
+                  }`}
+                >
+                  {plan.highlight && (
+                    <span className="absolute -top-7 left-1/2 z-10 -translate-x-1/2 whitespace-nowrap rounded-full bg-white px-3.5 py-1 text-[10px] font-bold uppercase tracking-wider text-brand shadow-md ring-1 ring-brand/20">
+                      Most popular
+                    </span>
+                  )}
+                  <h3 className={`font-display text-xl font-semibold ${plan.highlight ? 'text-white' : 'text-ink'}`}>
+                    {plan.name}
+                  </h3>
+                  {plan.tagline && (
+                    <p className={`mt-1 text-sm ${plan.highlight ? 'text-white/80' : 'text-muted'}`}>{plan.tagline}</p>
+                  )}
+                  <div className="mt-5 flex items-baseline gap-1.5">
+                    <span className={`font-display text-4xl font-semibold ${plan.highlight ? 'text-white' : 'text-ink'}`}>
+                      {plan.price === 0
+                        ? 'Free'
+                        : new Intl.NumberFormat(undefined, { style: 'currency', currency: plan.currency || currency, maximumFractionDigits: 0 }).format(plan.price)}
+                    </span>
+                    {plan.price !== 0 && plan.period && (
+                      <span className={`text-sm ${plan.highlight ? 'text-white/75' : 'text-muted'}`}>/ {plan.period}</span>
+                    )}
+                  </div>
+                  <ul className={`mt-6 flex-1 space-y-2.5 text-sm ${plan.highlight ? 'text-white/90' : 'text-muted'}`}>
+                    {plan.features.map((f) => (
+                      <li key={f} className="flex items-start gap-2.5">
+                        <CheckCircle2 className={`mt-0.5 h-4 w-4 shrink-0 ${plan.highlight ? 'text-white' : 'text-brand'}`} />
+                        {f}
+                      </li>
+                    ))}
+                  </ul>
+                  <Link
+                    href={
+                      // Plan CTAs always go through sign-in; the intended page is
+                      // kept as `next` so users continue there after logging in.
+                      (plan.ctaHref || '/login').startsWith('/login')
+                        ? plan.ctaHref || '/login'
+                        : `/login?next=${encodeURIComponent(plan.ctaHref || '/courses')}`
+                    }
+                    className={`mt-7 block rounded-full py-3 text-center text-sm font-bold transition ${
+                      plan.highlight
+                        ? 'bg-white text-brand hover:bg-white/90'
+                        : 'border border-brand/40 text-brand hover:bg-brand-soft'
+                    }`}
+                  >
+                    {plan.ctaLabel || 'Get started'}
+                  </Link>
+                </div>
+              ))}
+            </div>
+
+            <p className="mt-8 text-center text-[13px] text-muted">
+              Prices shown in {currency}. Individual courses can also be bought one at a time.
+            </p>
+          </div>
+        </section>
+      )}
+
       {/* ── Live offers ─────────────────────────────────── */}
       {offers.length > 0 && (
         <section className="border-b border-line bg-card py-12 lg:py-14">
@@ -214,9 +332,13 @@ export default function HomePage() {
 
       {/* ── Logo strip ───────────────────────────────────── */}      <section className="border-y border-line bg-card py-7">
         <div className="container-page flex flex-wrap items-center justify-center gap-x-12 gap-y-4">
-          {cms?.brands?.length ? (
+          {cms?.brands?.length && !hasDefaultBrandIcons ? (
             cms.brands.slice(0, 6).map((b) => (
               <img key={b.id} src={b.image} alt="" className="h-6 w-auto object-contain opacity-50 grayscale" />
+            ))
+          ) : hasDefaultBrandIcons ? (
+            REPLACEMENT_BRAND_LOGOS.map((brand) => (
+              <img key={brand.src} src={brand.src} alt={brand.alt} className="h-8 w-auto object-contain sm:h-9" />
             ))
           ) : (
             WORDMARKS.map((w) => (
@@ -250,13 +372,18 @@ export default function HomePage() {
               <Link
                 key={cat.id}
                 href={`/courses?category=${cat.slug}`}
-                className="group rounded-2xl border border-line bg-card p-8 text-center shadow-sm transition-all hover:-translate-y-1 hover:shadow-lift"
+                className="group overflow-hidden rounded-2xl border border-line bg-card shadow-sm transition-all hover:-translate-y-1 hover:shadow-lift"
               >
-                <span className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-surface text-ink transition group-hover:bg-brand group-hover:text-white">
-                  <CategoryIcon name={cat.name} className="h-6 w-6" />
+                <img
+                  src={getCategoryImage(cat.name)}
+                  alt={`${cat.name} courses`}
+                  loading="lazy"
+                  className="aspect-[16/10] w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                />
+                <span className="block p-4 sm:p-5">
+                  <span className="block text-left text-[17px] font-bold text-ink group-hover:text-brand">{cat.name}</span>
+                  <span className="mt-1 block text-left text-[13px] text-muted">{cat._count?.courses ?? 0} courses</span>
                 </span>
-                <span className="mt-4 block text-[17px] font-bold text-ink group-hover:text-brand">{cat.name}</span>
-                <span className="mt-1 block text-[13px] text-muted">{cat._count?.courses ?? 0} courses</span>
               </Link>
             ))}
           </div>

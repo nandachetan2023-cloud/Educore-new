@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/providers';
 import { SuperAdminShell } from '@/components/superadmin-shell';
+import { BackLink } from '@/components/back-link';
 
 interface AuditRow {
   id: number;
@@ -57,6 +58,7 @@ export default function LogsPage() {
   return (
     <SuperAdminShell>
       <div className="container-page">
+        <BackLink href="/dashboard/superadmin" label="Platform console" />
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
             <h1 className="font-display text-3xl font-semibold tracking-tight text-ink">Audit logs</h1>

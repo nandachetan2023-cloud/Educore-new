@@ -21,6 +21,7 @@ interface CourseDetail {
   price?: number; discount?: number; duration?: string; certificate?: boolean;
   instructor: { id: number; name: string; image?: string; headline?: string; bio?: string };
   category?: { name: string }; level?: { name: string }; language?: { name: string };
+  tags?: { id: number; name: string; slug: string }[];
   chapters: Chapter[];
   reviews: { id: number; rating: number; review: string; user: { name: string; image?: string } }[];
   averageRating: number;
@@ -72,7 +73,7 @@ export default function CourseDetailPage({ params }: { params: { slug: string } 
   if (loading) return <div className="container-page py-20 text-center text-muted">Loading course…</div>;
   if (!course) return <div className="container-page py-20 text-center text-muted">Course not found.</div>;
 
-  const currency = branding?.currency ?? 'USD';
+  const currency = branding?.currency ?? 'INR';
   const totalLessons = course.chapters.reduce((n, c) => n + c.lessons.length, 0);
   const discountPct = course.price && course.discount ? Math.round((course.discount / course.price) * 100) : 0;
   const visibleChapters = showAllSections ? course.chapters : course.chapters.slice(0, 3);
@@ -93,6 +94,11 @@ export default function CourseDetailPage({ params }: { params: { slug: string } 
         <img src={HERO_BG} alt="" aria-hidden className="absolute inset-0 h-full w-full object-cover opacity-30" />
         <div className="absolute inset-0 bg-gradient-to-r from-[#101418] via-[#101418]/80 to-[#101418]/30" />
         <div className="container-page relative py-14 lg:py-20">
+          <div className="mb-4">
+            <Link href="/courses" className="inline-flex items-center gap-1.5 text-sm font-medium text-white/70 transition hover:text-white">
+              <span aria-hidden>&larr;</span> All courses
+            </Link>
+          </div>
           <div className="flex flex-wrap gap-2">
             <span className="rounded-full bg-green-500/20 px-3 py-1 text-xs font-bold text-green-400">Best Seller</span>
             {course.category && (
@@ -100,6 +106,15 @@ export default function CourseDetailPage({ params }: { params: { slug: string } 
                 {course.category.name}
               </span>
             )}
+            {(course.tags ?? []).map((tag) => (
+              <Link
+                key={tag.id}
+                href={`/courses?tag=${encodeURIComponent(tag.slug)}`}
+                className="rounded-full border border-white/25 px-3 py-1 text-xs font-semibold text-white/90 transition hover:border-white/60"
+              >
+                {tag.name}
+              </Link>
+            ))}
           </div>
           <h1 className="mt-5 max-w-3xl font-display text-4xl font-semibold leading-tight sm:text-5xl">
             {course.title}

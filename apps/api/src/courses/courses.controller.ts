@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   ParseIntPipe,
@@ -31,6 +32,15 @@ export class CoursesController {
     return this.courses.listByInstructor(instructorId);
   }
 
+  @Roles(Principal.INSTRUCTOR)
+  @Get('preview/:id')
+  preview(
+    @CurrentUser('sub') instructorId: number,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.courses.previewByInstructor(instructorId, id);
+  }
+
   @Public()
   @Get(':slug')
   detail(@Param('slug') slug: string) {
@@ -54,5 +64,23 @@ export class CoursesController {
     @Body() dto: UpdateCourseDto,
   ) {
     return this.courses.updateByInstructor(instructorId, id, dto);
+  }
+
+  @Roles(Principal.INSTRUCTOR)
+  @Post(':id/submit')
+  submit(
+    @CurrentUser('sub') instructorId: number,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.courses.submitByInstructor(instructorId, id);
+  }
+
+  @Roles(Principal.INSTRUCTOR)
+  @Delete(':id')
+  remove(
+    @CurrentUser('sub') instructorId: number,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.courses.removeByInstructor(instructorId, id);
   }
 }

@@ -6,6 +6,7 @@ import { X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Navbar } from '@/components/navbar';
 import { Footer } from '@/components/footer';
+import { SitePageContent } from '@/components/site-page-content';
 
 export interface Announcement {
   enabled: boolean;
@@ -103,7 +104,10 @@ export function Chrome({
     <div className="flex min-h-screen flex-col">
       {!bare && announcement && <AnnouncementBar announcement={announcement} />}
       {!bare && <Navbar />}
-      <main className="flex-1">{children}</main>
+      <main className="flex-1">
+        {!bare && <SitePageContent />}
+        {children}
+      </main>
       {!bare && <Footer />}
     </div>
   );

@@ -54,17 +54,45 @@ export function oauthStartUrl(provider: 'google' | 'github', role: 'student' | '
   return `${BASE}/auth/oauth/${provider}?${params.toString()}`;
 }
 
+function activeStorage(): Storage | null {
+  if (typeof window === 'undefined') return null;
+  return sessionStorage.getItem(REFRESH_KEY) ? sessionStorage : localStorage;
+}
+
 export const tokenStore = {
   get access() {
-    return typeof window === 'undefined' ? null : localStorage.getItem(TOKEN_KEY);
+    return activeStorage()?.getItem(TOKEN_KEY) ?? null;
   },
-  set(access: string, refresh: string) {
-    localStorage.setItem(TOKEN_KEY, access);
-    localStorage.setItem(REFRESH_KEY, refresh);
+  get refresh() {
+    return activeStorage()?.getItem(REFRESH_KEY) ?? null;
   },
-  clear() {
+  get persistent() {
+    return typeof window !== 'undefined' && localStorage.getItem(REFRESH_KEY) != null;
+  },
+  /**
+   * `persistent` stores the tokens in localStorage (survives browser restarts)
+   * instead of sessionStorage. When omitted, keep whatever storage already
+   * holds the session; a brand-new session defaults to persistent.
+   */
+  set(access: string, refresh: string, persistent?: boolean) {
+    if (typeof window === 'undefined') return;
+    const keep =
+      persistent ??
+      (localStorage.getItem(REFRESH_KEY) != null || sessionStorage.getItem(REFRESH_KEY) == null);
     localStorage.removeItem(TOKEN_KEY);
     localStorage.removeItem(REFRESH_KEY);
+    sessionStorage.removeItem(TOKEN_KEY);
+    sessionStorage.removeItem(REFRESH_KEY);
+    const store = keep ? localStorage : sessionStorage;
+    store.setItem(TOKEN_KEY, access);
+    store.setItem(REFRESH_KEY, refresh);
+  },
+  clear() {
+    if (typeof window === 'undefined') return;
+    localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem(REFRESH_KEY);
+    sessionStorage.removeItem(TOKEN_KEY);
+    sessionStorage.removeItem(REFRESH_KEY);
   },
 };
 
@@ -88,8 +116,7 @@ export class ApiError extends Error {
 let refreshInFlight: Promise<boolean> | null = null;
 
 async function tryRefresh(): Promise<boolean> {
-  const refreshToken =
-    typeof window === 'undefined' ? null : localStorage.getItem(REFRESH_KEY);
+  const refreshToken = tokenStore.refresh;
   if (!refreshToken) return false;
   // Single flight: N parallel 401s share N-1 no-ops.
   refreshInFlight ??= fetch(`${BASE}/auth/refresh`, {

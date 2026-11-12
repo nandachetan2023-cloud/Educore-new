@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   ArrowRight, Award, BookOpen, CheckCircle2, Clock, GraduationCap, LayoutDashboard,
-  Lightbulb, ShieldCheck, Trophy,
+  Library, Lightbulb, ShieldCheck, Trophy,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/providers';
@@ -77,7 +77,8 @@ export default function StudentDashboard() {
         {
           heading: 'Learn',
           links: [
-            { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+            { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, match: '' },
+            { href: '/dashboard/my-learning', label: 'My Learning', icon: Library },
             { href: '/courses', label: 'Browse Courses', icon: BookOpen },
             { href: '/become-instructor', label: 'Become an Instructor', icon: GraduationCap },
             ...(user?.principal === 'admin'
@@ -87,6 +88,12 @@ export default function StudentDashboard() {
                   icon: ShieldCheck,
                 }]
               : []),
+          ],
+        },
+        {
+          heading: 'Account',
+          links: [
+            { href: '/dashboard/security', label: 'Security', icon: ShieldCheck },
           ],
         },
       ]}
@@ -146,8 +153,8 @@ export default function StudentDashboard() {
                   <span className="grid h-7 w-7 place-items-center rounded-full bg-brand-soft text-brand">▶</span>
                   Continue Learning
                 </h2>
-                <Link href="/courses" className="flex items-center gap-1 text-sm font-semibold text-brand hover:underline">
-                  View All Courses <ArrowRight className="h-4 w-4" />
+                <Link href="/dashboard/my-learning" className="flex items-center gap-1 text-sm font-semibold text-brand hover:underline">
+                  My Learning <ArrowRight className="h-4 w-4" />
                 </Link>
               </div>
 

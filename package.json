@@ -18,6 +18,7 @@
     "db:generate": "npm run prisma:generate --workspace=@educore/api",
     "db:migrate": "npm run prisma:migrate --workspace=@educore/api",
     "db:seed": "npm run prisma:seed --workspace=@educore/api",
+    "db:seed:demo": "npm run prisma:seed:demo --workspace=@educore/api",
     "db:studio": "npm run prisma:studio --workspace=@educore/api"
   },
   "engines": {

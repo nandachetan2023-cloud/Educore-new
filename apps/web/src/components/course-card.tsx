@@ -8,7 +8,7 @@ import { CourseThumb, Stars } from '@/components/ui';
 
 export function CourseCard({ course, badge }: { course: Course; badge?: 'Bestseller' | 'Highest Rated' | 'New' }) {
   const branding = useBranding();
-  const currency = branding?.currency ?? 'USD';
+  const currency = branding?.currency ?? 'INR';
   const hasDiscount = (course.discount ?? 0) > 0;
   const enrollments = course._count.enrollments ?? 0;
   const computed: typeof badge =

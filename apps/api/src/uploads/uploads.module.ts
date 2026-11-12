@@ -39,9 +39,20 @@ const ALLOWED = new Set([
 export class UploadsService {
   constructor(private config: ConfigService) {}
 
+  /**
+   * Public URL of a stored file. Relative on purpose: the storefront proxies
+   * /uploads/* to the API (next.config.mjs), so a logo or thumbnail keeps
+   * working on whatever host the tenant is served from — and the API can still
+   * serve them directly.
+   */
   publicUrl(relPath: string) {
+    return `/uploads/${relPath.replace(/\\/g, '/')}`;
+  }
+
+  /** Absolute URL of a stored file (for e-mails and other server-side sends). */
+  absoluteUrl(relPath: string) {
     const apiUrl = process.env.API_URL ?? `http://localhost:${process.env.API_PORT ?? 4000}`;
-    return `${apiUrl}/uploads/${relPath.replace(/\\/g, '/')}`;
+    return `${apiUrl}${this.publicUrl(relPath)}`;
   }
 
   /** Recursively lists every file under storage/uploads (skips nothing — admin-only view). */

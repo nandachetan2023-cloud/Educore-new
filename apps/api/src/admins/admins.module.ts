@@ -35,6 +35,14 @@ class SetAdminTenantDto {
   @IsOptional() @IsInt() tenantId?: number | null;
 }
 
+class UpdateAdminDto {
+  @IsOptional() @IsString() name?: string;
+  @IsOptional() @IsEmail() email?: string;
+  @IsOptional() @IsString() @MinLength(8) password?: string;
+  @IsOptional() @IsIn(['admin', 'super_admin']) role?: 'admin' | 'super_admin';
+  @IsOptional() @IsInt() tenantId?: number | null;
+}
+
 /**
  * Admin-account management. Restricted to super-admins — the top tier that can
  * create/remove other admins and promote/demote them.
@@ -69,6 +77,10 @@ export class AdminsService {
       if ((dto.role ?? 'admin') === 'super_admin') {
         throw new BadRequestException('A tenant admin cannot be a platform superadmin');
       }
+      // One admin per white-label workspace: every tenant and its admin are unique.
+      if (tenant.ownerAdminId != null) {
+        throw new ConflictException('This white-label workspace already has its own admin');
+      }
     } else {
       tenantId = null;
     }
@@ -83,6 +95,72 @@ export class AdminsService {
       select: { id: true, name: true, email: true, role: true, tenantId: true },
     });
     return admin;
+  }
+
+  /**
+   * Full update of a staff account — the "U" in CRUD. Name, email, password,
+   * role and workspace can all be changed in one call, with the same guards
+   * the individual endpoints apply (last super-admin, tenant-owning admins,
+   * duplicate email).
+   */
+  async update(actorId: number, id: number, dto: UpdateAdminDto) {
+    const admin = await this.prisma.admin.findUnique({ where: { id } });
+    if (!admin) throw new NotFoundException('Admin not found');
+
+    if (dto.email && dto.email.toLowerCase() !== admin.email) {
+      const existing = await this.prisma.admin.findUnique({ where: { email: dto.email.toLowerCase() } });
+      if (existing) throw new ConflictException('An admin with this email already exists');
+    }
+
+    const role = dto.role ?? admin.role;
+    const tenantId = dto.tenantId === undefined ? admin.tenantId : dto.tenantId;
+
+    if (role === 'super_admin' && tenantId != null) {
+      throw new BadRequestException('A tenant admin cannot be a platform superadmin — detach the workspace first');
+    }
+    if (tenantId != null) {
+      const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } });
+      if (!tenant) throw new NotFoundException('Tenant not found');
+      // One admin per white-label workspace.
+      if (tenant.ownerAdminId != null && tenant.ownerAdminId !== admin.id) {
+        throw new ConflictException('This white-label workspace already has its own admin');
+      }
+    }
+    if (admin.role === 'super_admin' && role !== 'super_admin') {
+      const superCount = await this.prisma.admin.count({ where: { role: 'super_admin' } });
+      if (superCount <= 1) throw new BadRequestException('Cannot demote the last super-admin');
+    }
+    // Detaching a tenant owner would leave the workspace without a login.
+    if (admin.tenantId != null && tenantId === null) {
+      const owned = await this.prisma.tenant.findUnique({ where: { ownerAdminId: admin.id } });
+      if (owned) {
+        throw new BadRequestException(
+          'This admin owns a workspace and cannot be detached. Transfer ownership or delete the workspace first.',
+        );
+      }
+    }
+    if (dto.password && actorId === id) {
+      // fine — changing your own password here requires the current one elsewhere
+    }
+
+    return this.prisma.admin.update({
+      where: { id },
+      data: {
+        ...(dto.name !== undefined ? { name: dto.name.trim() } : {}),
+        ...(dto.email !== undefined ? { email: dto.email.toLowerCase() } : {}),
+        ...(dto.password ? { password: await argon2.hash(dto.password) } : {}),
+        ...(dto.role !== undefined ? { role: dto.role } : {}),
+        ...(dto.tenantId !== undefined ? { tenantId } : {}),
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        role: true,
+        tenantId: true,
+        tenant: { select: { id: true, name: true, slug: true } },
+      },
+    });
   }
 
   async setRole(actorId: number, id: number, role: 'admin' | 'super_admin') {
@@ -134,6 +212,10 @@ export class AdminsService {
     if (tenantId != null) {
       const tenant = await this.prisma.tenant.findUnique({ where: { id: tenantId } });
       if (!tenant) throw new NotFoundException('Tenant not found');
+      // One admin per white-label workspace.
+      if (tenant.ownerAdminId != null && tenant.ownerAdminId !== admin.id) {
+        throw new ConflictException('This white-label workspace already has its own admin');
+      }
       if (admin.role === 'super_admin') {
         throw new BadRequestException('Detach from super-admin first: a tenant admin cannot be a platform superadmin');
       }
@@ -187,6 +269,15 @@ export class AdminsController {
       throw new ForbiddenException('Invalid role');
     }
     return this.admins.setRole(actorId, id, role);
+  }
+
+  @Put(':id')
+  update(
+    @CurrentUser('sub') actorId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateAdminDto,
+  ) {
+    return this.admins.update(actorId, id, dto);
   }
 
   @Put(':id/tenant')

@@ -8,6 +8,7 @@ export default () => ({
     refreshSecret: process.env.JWT_REFRESH_SECRET ?? 'dev-refresh-secret',
     accessTtl: process.env.JWT_ACCESS_TTL ?? '15m',
     refreshTtl: process.env.JWT_REFRESH_TTL ?? '30d',
+    sessionRefreshTtl: process.env.JWT_SESSION_REFRESH_TTL ?? '1d',
   },
   brand: {
     name: process.env.BRAND_NAME ?? 'EduCore',
@@ -15,7 +16,9 @@ export default () => ({
     favicon: process.env.BRAND_FAVICON ?? '/brand/favicon.ico',
     primaryColor: process.env.BRAND_PRIMARY_COLOR ?? '#4f46e5',
     secondaryColor: process.env.BRAND_SECONDARY_COLOR ?? '#0ea5e9',
-    currency: process.env.DEFAULT_CURRENCY ?? 'USD',
+    // Platform currency. The workspace override (Admin → Settings, stored in
+    // the `settings` table) wins over this; this is only the fallback.
+    currency: process.env.DEFAULT_CURRENCY ?? 'INR',
     commissionRate: parseFloat(process.env.PLATFORM_COMMISSION_RATE ?? '20'),
   },
   storage: {
@@ -53,6 +56,10 @@ export default () => ({
   razorpay: {
     keyId: process.env.RAZORPAY_KEY_ID ?? '',
     keySecret: process.env.RAZORPAY_KEY_SECRET ?? '',
+  },
+  ai: {
+    openAiApiKey: process.env.OPENAI_API_KEY ?? '',
+    openAiModel: process.env.OPENAI_MODEL ?? 'gpt-4o-mini',
   },
   // Social login (OAuth). Empty = provider disabled (frontend hides its
   // button). Set these from your Google Cloud / GitHub OAuth app, then

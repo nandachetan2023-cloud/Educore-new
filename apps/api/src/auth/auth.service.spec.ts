@@ -6,6 +6,7 @@ import { PrismaService, PrismaConnection } from '../prisma/prisma.service';
 import { RAW_PRISMA } from '../prisma/prisma.module';
 import { TenantStatusCache } from '../common/tenant-status-cache.service';
 import { AuditService } from '../audit/audit.service';
+import { MailService } from '../mail/mail.module';
 import {
   ConflictException,
   UnauthorizedException,
@@ -17,17 +18,22 @@ import * as argon2 from 'argon2';
 describe('AuthService', () => {
   let service: AuthService;
   let prisma: { user: Record<string, jest.Mock>; admin: Record<string, jest.Mock> };
-  let raw: { tenant: Record<string, jest.Mock> };
+  let raw: { tenant: Record<string, jest.Mock>; user: Record<string, jest.Mock>; admin: Record<string, jest.Mock> };
   let jwt: { verifyAsync: jest.Mock; signAsync: jest.Mock };
   let config: { get: jest.Mock };
   let tenantStatusCache: { getStatus: jest.Mock; invalidate: jest.Mock };
+  let mail: { send: jest.Mock };
 
   beforeEach(async () => {
     prisma = {
       user: { findFirst: jest.fn(), findUnique: jest.fn(), create: jest.fn() },
       admin: { findUnique: jest.fn() },
     };
-    raw = { tenant: { findUnique: jest.fn(), findFirst: jest.fn() } };
+    raw = {
+      tenant: { findUnique: jest.fn(), findFirst: jest.fn() },
+      user: { update: jest.fn().mockResolvedValue({}) },
+      admin: { update: jest.fn().mockResolvedValue({}) },
+    };
     raw.tenant.findUnique.mockResolvedValue({ status: 'active' });
     jwt = {
       verifyAsync: jest.fn().mockResolvedValue({ sub: 1, principal: Principal.STUDENT }),
@@ -38,6 +44,7 @@ describe('AuthService', () => {
       getStatus: jest.fn((_id: number, loader: () => Promise<string>) => loader()),
       invalidate: jest.fn(),
     };
+    mail = { send: jest.fn().mockResolvedValue(undefined) };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -49,6 +56,7 @@ describe('AuthService', () => {
         { provide: PrismaConnection, useValue: raw },
         { provide: TenantStatusCache, useValue: tenantStatusCache },
         { provide: AuditService, useValue: { log: jest.fn() } },
+        { provide: MailService, useValue: mail },
       ],
     }).compile();
 
@@ -95,8 +103,35 @@ describe('AuthService', () => {
       });
     });
 
-    it('throws ConflictException when the email is already registered', async () => {
-      prisma.user.findFirst.mockResolvedValue({ id: 1 });
+    it('stores a verification token and emails a link after registering', async () => {
+      prisma.user.findFirst.mockResolvedValue(null);
+      prisma.user.create.mockResolvedValue({
+        id: 5,
+        name: 'Jane',
+        email: 'jane@example.com',
+        role: 'student',
+        tenantId: 7,
+      });
+
+      await service.register({ ...dto, name: 'Jane', email: 'jane@example.com' });
+
+      expect(raw.user.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 5 },
+          data: expect.objectContaining({
+            emailVerifyToken: expect.any(String),
+            emailVerifyExpires: expect.any(Date),
+          }),
+        }),
+      );
+      expect(mail.send).toHaveBeenCalledWith(
+        'jane@example.com',
+        expect.stringContaining('Verify'),
+        expect.stringContaining('/verify-email?token='),
+      );
+    });
+
+    it('throws ConflictException when the email is already registered', async () => {      prisma.user.findFirst.mockResolvedValue({ id: 1 });
 
       await expect(service.register(dto)).rejects.toThrow(ConflictException);
       expect(prisma.user.create).not.toHaveBeenCalled();

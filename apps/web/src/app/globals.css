@@ -28,6 +28,7 @@
 body {
   background: rgb(var(--surface));
   color: rgb(var(--ink));
+  font-family: var(--font-sans, system-ui, sans-serif);
   -webkit-font-smoothing: antialiased;
 }
 

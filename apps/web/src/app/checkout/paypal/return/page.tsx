@@ -3,6 +3,7 @@
 import { Suspense, useEffect, useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { api, ApiError } from '@/lib/api';
+import Link from 'next/link';
 
 function PaypalReturnInner() {
   const params = useSearchParams();
@@ -39,6 +40,11 @@ function PaypalReturnInner() {
             <h1 className="mt-5 text-xl font-bold">Confirming your PayPal payment…</h1>
           </>
         )}
+        <div className="mt-6">
+          <Link href="/courses" className="text-sm text-muted transition hover:text-brand">
+            <span aria-hidden>&larr;</span> Back to courses
+          </Link>
+        </div>
       </div>
     </div>
   );

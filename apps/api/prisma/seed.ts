@@ -33,6 +33,20 @@ async function createTenant(opts: {
 }
 
 async function main() {
+  const seedAdminPassword = process.env.SEED_ADMIN_PASSWORD;
+  const seedUserPassword = process.env.SEED_USER_PASSWORD;
+  const seedStaffPassword = process.env.SEED_STAFF_PASSWORD;
+  if (!seedAdminPassword || !seedUserPassword || !seedStaffPassword) {
+    throw new Error(
+      'Set SEED_ADMIN_PASSWORD, SEED_USER_PASSWORD, and SEED_STAFF_PASSWORD before running the seed.',
+    );
+  }
+  const [adminPass, userPass, staffPass] = await Promise.all([
+    argon2.hash(seedAdminPassword),
+    argon2.hash(seedUserPassword),
+    argon2.hash(seedStaffPassword),
+  ]);
+
   console.log('› Clearing existing content…');
   // FK-safe delete order, across every tenant (seed always fully resets).
   await prisma.watchHistory.deleteMany();
@@ -68,12 +82,6 @@ async function main() {
   await prisma.tenant.deleteMany();
   await prisma.admin.deleteMany();
   await prisma.plan.deleteMany();
-
-  // One demo password for every account — matches the login-form demo rows.
-  const [adminPass, userPass] = await Promise.all([
-    argon2.hash('password'),
-    argon2.hash('password'),
-  ]);
 
   console.log('› Platform: superadmin…');
   // The platform operator — tenantId stays null. Sells/creates tenants below.
@@ -154,7 +162,7 @@ async function main() {
     acmeLevels[name] = l.id;
   }
   const acmeLanguages: Record<string, number> = {};
-  for (const name of ['English', 'Hindi', 'Spanish']) {
+  for (const name of ['English', 'Hindi']) {
     const l = await prisma.courseLanguage.create({ data: { tenantId: acmeId, name, slug: slug(name) } });
     acmeLanguages[name] = l.id;
   }
@@ -417,7 +425,6 @@ async function main() {
   //  already exists is skipped rather than duplicated.
   // ───────────────────────────────────────────────────────────
   console.log('› Demo staff accounts…');
-  const staffPass = await argon2.hash('password');
   const staffSeeds: Array<{
     name: string;
     email: string;
@@ -533,12 +540,16 @@ async function main() {
   }
 
   console.log('✓ Seed complete:', {
-    superadmin: 'superadmin@gmail.com / password',
-    acme: { tenantId: acmeId, admin: 'admin@gmail.com / password', courses: acmeCourses.length },
-    nova: { tenantId: novaId, admin: 'admin@nova.test / password', courses: 1 },
+    superadmin: 'superadmin@gmail.com',
+    acme: { tenantId: acmeId, admin: 'admin@gmail.com', courses: acmeCourses.length },
+    demo: {
+      instructor: 'instructor@gmail.com',
+      student: 'user@gmail.com',
+    },
+    nova: { tenantId: novaId, admin: 'admin@nova.test', courses: 1 },
     leads: leadSeeds.length,
     resellers: resellerSeeds.length,
-    staff: staffSeeds.map((s) => `${s.email} / password`),
+    staff: staffSeeds.map((s) => s.email),
   });
 }
 

@@ -4,6 +4,7 @@ import { useAuth } from '@/lib/providers';
 import { useRouter } from 'next/navigation';
 import { Check, Minus, Search, ShieldCheck, Sparkles, X } from 'lucide-react';
 import { SuperAdminShell } from '@/components/superadmin-shell';
+import { BackLink } from '@/components/back-link';
 
 type Cell = 'yes' | 'no' | 'partial';
 type RoleKey = 'superadmin' | 'admin' | 'instructor' | 'student';
@@ -126,6 +127,7 @@ export default function PermissionsPage() {
   return (
     <SuperAdminShell>
       <div className="container-page py-8">
+        <BackLink href="/dashboard/superadmin" label="Platform console" />
         {/* Header */}
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="flex items-center gap-3">

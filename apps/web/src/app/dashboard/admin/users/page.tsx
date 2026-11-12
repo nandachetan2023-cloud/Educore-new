@@ -9,9 +9,7 @@ import {
   Download,
   GraduationCap,
   LayoutDashboard,
-  Palette,
   Search,
-  BadgePercent,
   UserPlus,
   Users,
   Wallet,
@@ -135,7 +133,7 @@ export default function UserDirectoryPage() {
   const [toast, setToast] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
-  const currency = branding?.currency ?? 'USD';
+  const currency = branding?.currency ?? 'INR';
   const money = (n: number) =>
     new Intl.NumberFormat(undefined, { style: 'currency', currency, maximumFractionDigits: 0 }).format(n);
 

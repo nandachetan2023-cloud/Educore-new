@@ -2,10 +2,11 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { CheckCircle2, Palette, Plus, Search, Trash2, UserPlus, X } from 'lucide-react';
+import { CheckCircle2, Palette, Search, Trash2, UserPlus, X } from 'lucide-react';
 import { api, ApiError } from '@/lib/api';
 import { useAuth } from '@/lib/providers';
 import { SuperAdminShell } from '@/components/superadmin-shell';
+import { BackLink } from '@/components/back-link';
 
 interface StaffRow {
   id: number;
@@ -40,6 +41,8 @@ export default function PlatformStaffPage() {
   const [toast, setToast] = useState<string | null>(null);
   const [workspaceFor, setWorkspaceFor] = useState<StaffRow | null>(null);
   const [workspacePick, setWorkspacePick] = useState<string>('');
+  const [editFor, setEditFor] = useState<StaffRow | null>(null);
+  const [editForm, setEditForm] = useState({ name: '', email: '', password: '', role: 'admin' as 'admin' | 'super_admin', tenantId: '' });
 
   const showToast = (m: string) => {
     setToast(m);
@@ -92,6 +95,43 @@ export default function PlatformStaffPage() {
     }
   };
 
+  const openEdit = (s: StaffRow) => {
+    setEditFor(s);
+    setEditForm({
+      name: s.name ?? '',
+      email: s.email ?? '',
+      password: '',
+      role: s.role,
+      tenantId: s.tenantId ? String(s.tenantId) : '',
+    });
+  };
+
+  const saveEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editFor) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      await api(`/admin/admins/${editFor.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          name: editForm.name,
+          email: editForm.email,
+          ...(editForm.password ? { password: editForm.password } : {}),
+          role: editForm.role,
+          tenantId: editForm.tenantId ? Number(editForm.tenantId) : null,
+        }),
+      });
+      setEditFor(null);
+      showToast('Admin updated.');
+      load();
+    } catch (e2) {
+      setErr(e2 instanceof ApiError ? e2.message : 'Failed to update admin');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const assignWorkspace = async () => {
     if (!workspaceFor) return;
     setBusy(true);
@@ -129,6 +169,7 @@ export default function PlatformStaffPage() {
   return (
     <SuperAdminShell>
       <div className="container-page py-8">
+        <BackLink href="/dashboard/superadmin" label="Platform console" />
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h1 className="text-3xl font-extrabold">Platform Staff</h1>
@@ -203,6 +244,12 @@ export default function PlatformStaffPage() {
                     </td>
                     <td className="px-5 py-3.5 text-right">
                       <div className="flex justify-end gap-2 text-xs font-semibold">
+                        <button
+                          onClick={() => openEdit(s)}
+                          className="rounded-lg bg-brand-soft px-3 py-1.5 text-brand transition hover:bg-brand hover:text-white"
+                        >
+                          Edit
+                        </button>
                         <button
                           onClick={() => {
                             setWorkspaceFor(s);
@@ -292,6 +339,65 @@ export default function PlatformStaffPage() {
                 </button>
                 <button disabled={busy} className="btn-primary rounded-xl px-6 py-2.5 text-sm disabled:opacity-60">
                   {busy ? 'Creating…' : 'Create admin'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit admin modal */}
+      {editFor && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setEditFor(null)} />
+          <div className="relative w-full max-w-lg overflow-hidden rounded-2xl bg-card shadow-2xl">
+            <div className="flex items-center justify-between border-b border-line p-5">
+              <h2 className="text-lg font-bold text-ink">Edit {editFor.name}</h2>
+              <button onClick={() => setEditFor(null)} className="rounded-lg p-1.5 text-muted hover:bg-surface hover:text-ink">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <form onSubmit={saveEdit} className="space-y-4 p-5">
+              <div>
+                <label className="label">Full name</label>
+                <input required className="input" value={editForm.name} onChange={(e) => setEditForm((f) => ({ ...f, name: e.target.value }))} />
+              </div>
+              <div>
+                <label className="label">Email</label>
+                <input required type="email" className="input" value={editForm.email} onChange={(e) => setEditForm((f) => ({ ...f, email: e.target.value }))} />
+                <p className="mt-1 text-xs text-muted">Each white-label admin has its own unique email.</p>
+              </div>
+              <div>
+                <label className="label">New password (optional)</label>
+                <input minLength={8} type="password" className="input" value={editForm.password} onChange={(e) => setEditForm((f) => ({ ...f, password: e.target.value }))} placeholder="Leave blank to keep the current one" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="label">Role</label>
+                  <select className="input" value={editForm.role} onChange={(e) => setEditForm((f) => ({ ...f, role: e.target.value as 'admin' | 'super_admin' }))}>
+                    <option value="admin">Admin</option>
+                    <option value="super_admin">Super admin</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="label">White-label workspace</label>
+                  <select className="input" value={editForm.tenantId} onChange={(e) => setEditForm((f) => ({ ...f, tenantId: e.target.value }))}>
+                    <option value="">None (platform)</option>
+                    {tenants.map((t) => (
+                      <option key={t.id} value={t.id}>{t.name} (/{t.slug})</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <p className="rounded-xl bg-surface p-3 text-xs text-muted">
+                A workspace keeps exactly one admin ? each white-label tenant and its admin are unique.
+              </p>
+              <div className="flex justify-end gap-2.5 border-t border-line pt-4">
+                <button type="button" onClick={() => setEditFor(null)} className="rounded-xl px-5 py-2.5 text-sm font-semibold text-muted hover:text-ink">
+                  Cancel
+                </button>
+                <button disabled={busy} className="btn-primary rounded-xl px-6 py-2.5 text-sm disabled:opacity-60">
+                  {busy ? 'Saving…' : 'Save changes'}
                 </button>
               </div>
             </form>

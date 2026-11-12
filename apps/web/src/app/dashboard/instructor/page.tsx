@@ -4,10 +4,11 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
-  ArrowUpRight, Award, BookOpen, DollarSign, LayoutDashboard, Plus, Search, Star, TrendingUp, Users, Wallet,
+  ArrowUpRight, Award, BookOpen, DollarSign, LayoutDashboard, Layers, Plus, Search, ShieldCheck, Star, TrendingUp, Users, Wallet,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAuth, useBranding } from '@/lib/providers';
+import { createDraftCourse } from '@/lib/create-course';
 import { LineChart } from '@/components/charts';
 import { DirectoryShell } from '@/components/directory-shell';
 
@@ -39,13 +40,17 @@ export default function InstructorDashboard() {
   const { user, loading: authLoading, logout } = useAuth();
   const branding = useBranding();
   const router = useRouter();
+  const startCourse = async () => {
+    const id = await createDraftCourse();
+    if (id) router.push(`/dashboard/instructor/courses/${id}`);
+  };
   const [stats, setStats] = useState<InstructorStats | null>(null);
   const [courses, setCourses] = useState<MyCourse[]>([]);
   const [analytics, setAnalytics] = useState<InstructorAnalytics | null>(null);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
 
-  const currency = branding?.currency ?? 'USD';
+  const currency = branding?.currency ?? 'INR';
   const money = (n: number) => new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(n);
 
   useEffect(() => {
@@ -98,9 +103,16 @@ export default function InstructorDashboard() {
           heading: 'Teach',
           links: [
             { href: '/dashboard/instructor', label: 'Dashboard', icon: LayoutDashboard },
-            { href: '/dashboard/instructor/courses/new', label: 'New Course', icon: Plus },
+            { href: '/dashboard/instructor/courses', label: 'My Courses', icon: Layers },
+            { label: 'New Course', icon: Plus, onClick: startCourse },
             { href: '/dashboard/instructor/payouts', label: 'Payouts', icon: Wallet },
             { href: '/courses', label: 'Browse Catalog', icon: BookOpen },
+          ],
+        },
+        {
+          heading: 'Account',
+          links: [
+            { href: '/dashboard/security', label: 'Security', icon: ShieldCheck },
           ],
         },
       ]}
@@ -129,9 +141,9 @@ export default function InstructorDashboard() {
               <Link href="/dashboard/instructor/payouts" className="btn-ghost rounded-full text-sm">
                 <ArrowUpRight className="h-4 w-4" /> View Payouts
               </Link>
-              <Link href="/dashboard/instructor/courses/new" className="btn-primary rounded-full text-sm">
+              <button onClick={startCourse} className="btn-primary rounded-full text-sm">
                 <Plus className="h-4 w-4" /> Create New Course
-              </Link>
+              </button>
             </div>
           </div>
 
@@ -189,6 +201,7 @@ export default function InstructorDashboard() {
               <p className="text-[13px] text-muted">Manage your published and draft curriculum</p>
             </div>
             <div className="flex items-center gap-2">
+              <Link href="/dashboard/instructor/courses" className="text-[13px] font-semibold text-brand hover:underline">View all →</Link>
               <label className="relative flex items-center">
                 <Search className="absolute left-3.5 h-4 w-4 text-muted" />
                 <input
@@ -204,7 +217,7 @@ export default function InstructorDashboard() {
           {filtered.length === 0 ? (
             <div className="mt-4 rounded-2xl border border-line bg-card p-12 text-center shadow-sm">
               <p className="text-muted">You haven&apos;t created any courses yet.</p>
-              <Link href="/dashboard/instructor/courses/new" className="btn-primary mt-4 rounded-full">Create your first course</Link>
+              <button onClick={startCourse} className="btn-primary mt-4 rounded-full">Create your first course</button>
             </div>
           ) : (
             <div className="mt-4 overflow-x-auto rounded-2xl border border-line bg-card shadow-sm">

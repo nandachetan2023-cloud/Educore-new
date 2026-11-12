@@ -31,6 +31,12 @@ class BuilderDto {
 }
 
 class ItemDto {
+  // Bookkeeping fields the builder UI round-trips back from GET; the layout is
+  // rewritten wholesale on save, so they are accepted but never persisted.
+  @IsOptional() @IsInt() id?: number;
+  @IsOptional() @IsInt() tenantId?: number;
+  @IsOptional() @IsString() createdAt?: string;
+  @IsOptional() @IsString() updatedAt?: string;
   @IsIn(CERT_TOKENS) elementId!: CertToken;
   @IsString() xPosition!: string; // percentage of page width, e.g. "50"
   @IsString() yPosition!: string; // percentage of page height, e.g. "40"
@@ -70,11 +76,19 @@ export class CertificateBuilderService {
 
   async saveItems(items: ItemDto[]) {
     const clamp = (v: string) => String(Math.min(100, Math.max(0, parseFloat(v) || 0)));
+    // Only the layout columns are persisted — ids/timestamps are regenerated.
+    const rows = items.map((it) => ({
+      elementId: it.elementId,
+      xPosition: clamp(it.xPosition),
+      yPosition: clamp(it.yPosition),
+      text: it.text ?? null,
+      fontSize: it.fontSize,
+      color: it.color,
+      bold: it.bold,
+    }));
     await this.prisma.$transaction([
       this.prisma.certificateBuilderItem.deleteMany(),
-      this.prisma.certificateBuilderItem.createMany({
-        data: items.map((it) => ({ ...it, xPosition: clamp(it.xPosition), yPosition: clamp(it.yPosition) })),
-      }),
+      this.prisma.certificateBuilderItem.createMany({ data: rows }),
     ]);
     return this.prisma.certificateBuilderItem.findMany({ orderBy: { id: 'asc' } });
   }

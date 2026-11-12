@@ -13,19 +13,29 @@ export default function RegisterPage() {
   const branding = useBranding();
   const { refresh } = useAuth();
   const [form, setForm] = useState({ name: '', email: '', password: '', role: 'student' as 'student' | 'instructor' });
+  const [confirm, setConfirm] = useState('');
+  const [terms, setTerms] = useState(false);
   const [showPw, setShowPw] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setBusy(true);
     setError(null);
+    if (form.password !== confirm) {
+      setError('The passwords do not match');
+      return;
+    }
+    if (!terms) {
+      setError('Please accept the terms to create an account');
+      return;
+    }
+    setBusy(true);
     try {
       const res = await api<{ accessToken: string; refreshToken: string; principal: string }>('/auth/register', {
         method: 'POST',
         auth: false,
-        body: JSON.stringify(form),
+        body: JSON.stringify({ ...form, confirmPassword: confirm, termsAccepted: 'true' }),
       });
       tokenStore.set(res.accessToken, res.refreshToken);
       await refresh();
@@ -88,6 +98,33 @@ export default function RegisterPage() {
             </button>
           </div>
         </div>
+        <div>
+          <label className="label">Confirm password</label>
+          <div className="relative">
+            <Lock className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+            <input
+              type={showPw ? 'text' : 'password'}
+              required
+              minLength={8}
+              autoComplete="new-password"
+              placeholder="Repeat your password"
+              value={confirm}
+              onChange={(e) => setConfirm(e.target.value)}
+              className="input"
+              style={{ paddingLeft: '2.75rem' }}
+            />
+          </div>
+        </div>
+        <label className="flex cursor-pointer items-start gap-2 text-sm text-muted">
+          <input
+            type="checkbox"
+            required
+            checked={terms}
+            onChange={(e) => setTerms(e.target.checked)}
+            className="mt-0.5 h-4 w-4 rounded border-line accent-brand"
+          />
+          <span>I agree to the Terms of Service and Privacy Policy.</span>
+        </label>
         {error && <p className="rounded-xl bg-red-500/10 px-4 py-2.5 text-sm text-red-500">{error}</p>}
         <button disabled={busy} className="btn-primary w-full rounded-xl py-3.5 text-[15px]">
           {busy ? 'Creating…' : (<>Create account <ArrowRight className="h-4 w-4" /></>)}
