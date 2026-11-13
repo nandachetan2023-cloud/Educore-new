@@ -100,6 +100,25 @@ class BrandingDto {
 const SETTING_PREFIX = 'brand.';
 
 /**
+ * Legacy branding rows stored absolute upload URLs (e.g.
+ * http://localhost:4000/uploads/...), which break on any deployed host —
+ * the visitor's browser resolves localhost as their own machine. Uploads are
+ * always served by this install, so any absolute URL under /uploads/ is
+ * rewritten to the relative form the storefront proxies (next.config.mjs).
+ * External image URLs (CDN etc.) are left untouched.
+ */
+export function normalizeAssetUrl(url: string): string {
+  if (!url) return url;
+  try {
+    const u = new URL(url);
+    if (u.pathname.startsWith('/uploads/')) return `${u.pathname}${u.search}${u.hash}`;
+  } catch {
+    // Not absolute — already relative (or a non-http scheme), keep as-is.
+  }
+  return url;
+}
+
+/**
  * Runtime white-label branding, per tenant. Each tenant Admin overrides
  * their own branding from their dashboard, stored in the `settings` table
  * keyed by `tenantId` (`null` = platform-level fallback, editable by the
@@ -165,8 +184,8 @@ export class BrandingService {
 
     return {
       name: overrides.name || defaults.name || 'EduCore',
-      logo: overrides.logo || defaults.logo || '/brand/logo.svg',
-      favicon: overrides.favicon || defaults.favicon || '/brand/favicon.ico',
+      logo: normalizeAssetUrl(overrides.logo || defaults.logo || '/brand/logo.svg'),
+      favicon: normalizeAssetUrl(overrides.favicon || defaults.favicon || '/brand/favicon.ico'),
       primaryColor,
       secondaryColor,
       currency: overrides.currency || defaults.currency || 'INR',
@@ -184,12 +203,15 @@ export class BrandingService {
   async update(tenantId: number | null, dto: BrandingDto): Promise<Branding> {
     const entries = Object.entries(dto).filter(([, v]) => v !== undefined && v !== '');
     for (const [key, value] of entries) {
+      // Store asset URLs in the relative form (see normalizeAssetUrl) so a
+      // value pasted/saved from an older install can never go absolute again.
+      const stored = key === 'logo' || key === 'favicon' ? normalizeAssetUrl(String(value)) : String(value);
       const settingKey = `${SETTING_PREFIX}${key}`;
       const existing = await this.raw.setting.findFirst({ where: { tenantId, key: settingKey } });
       if (existing) {
-        await this.raw.setting.update({ where: { id: existing.id }, data: { value: String(value) } });
+        await this.raw.setting.update({ where: { id: existing.id }, data: { value: stored } });
       } else {
-        await this.raw.setting.create({ data: { tenantId, key: settingKey, value: String(value) } });
+        await this.raw.setting.create({ data: { tenantId, key: settingKey, value: stored } });
       }
     }
     return this.getForTenant(tenantId);
