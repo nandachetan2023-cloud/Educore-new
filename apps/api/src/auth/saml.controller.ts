@@ -4,6 +4,8 @@ import {
   Controller,
   Get,
   Logger,
+  Param,
+  ParseIntPipe,
   Post,
   Put,
   Query,
@@ -12,7 +14,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
-import { AuthPrincipal, CurrentUser, Public, Roles } from '../common/decorators';
+import { AuthPrincipal, CurrentUser, Public, Roles, SuperAdmin } from '../common/decorators';
 import { Principal } from '../common/enums';
 import { SsoConfigDto } from './dto';
 import { SamlService } from './saml.service';
@@ -97,5 +99,22 @@ export class SamlController {
   saveConfig(@CurrentUser() user: AuthPrincipal, @Body() dto: SsoConfigDto) {
     if (!user.tenantId) throw new BadRequestException('Admins need a workspace');
     return this.saml.saveConfig(user.tenantId, dto);
+  }
+
+  @Roles(Principal.ADMIN)
+  @SuperAdmin()
+  @Get('config/tenant/:tenantId')
+  getTenantConfig(@Param('tenantId', ParseIntPipe) tenantId: number) {
+    return this.saml.getTenantConfig(tenantId);
+  }
+
+  @Roles(Principal.ADMIN)
+  @SuperAdmin()
+  @Put('config/tenant/:tenantId')
+  saveTenantConfig(
+    @Param('tenantId', ParseIntPipe) tenantId: number,
+    @Body() dto: SsoConfigDto,
+  ) {
+    return this.saml.saveTenantConfig(tenantId, dto);
   }
 }

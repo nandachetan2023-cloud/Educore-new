@@ -10,11 +10,13 @@ import {
   OnModuleInit,
   Post,
   Put,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { IsInt, IsOptional, IsString } from 'class-validator';
 import { ApiTags } from '@nestjs/swagger';
 import * as nodemailer from 'nodemailer';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CurrentUser, Roles, SuperAdmin } from '../common/decorators';
 import { Principal } from '../common/enums';
@@ -25,6 +27,12 @@ export interface MailConfig {
   user: string;
   password: string;
   from: string;
+}
+
+export interface QueuedEmail {
+  to: string;
+  subject: string;
+  html: string;
 }
 
 const SETTING_PREFIX = 'mail.';
@@ -115,6 +123,51 @@ export class MailService implements OnModuleInit, OnModuleDestroy {
   /** Enqueues an email for background delivery — returns immediately. */
   async send(to: string, subject: string, html: string) {
     await this.prisma.mailQueueJob.create({ data: { to, subject, html } });
+  }
+
+  async prepareInvitation(
+    invitation: { to: string; name: string; role: 'student' | 'instructor'; password: string },
+  ) {
+    const cfg = await this.getConfig();
+    if (!cfg.host) {
+      throw new ServiceUnavailableException(
+        'Email invitations require SMTP. Configure mail settings before inviting a team member.',
+      );
+    }
+
+    const escapeHtml = (value: string) =>
+      value.replace(/[&<>"']/g, (character) => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;',
+      })[character] ?? character);
+    const name = escapeHtml(invitation.name);
+    const role = escapeHtml(invitation.role);
+    const password = escapeHtml(invitation.password);
+    const brand = escapeHtml(this.config.get<string>('brand.name') ?? 'EduCore');
+    const webUrl = (this.config.get<string>('webUrl') ?? 'http://localhost:3000').replace(/\/$/, '');
+    const loginUrl = `${webUrl}/login`;
+    const email: QueuedEmail = {
+      to: invitation.to,
+      subject: `You're invited to join ${brand}`,
+      html: [
+        `<p>Hi ${name},</p>`,
+        `<p>You have been invited to join <strong>${brand}</strong> as a ${role}.</p>`,
+        `<p><strong>Email:</strong> ${escapeHtml(invitation.to)}<br>`,
+        `<strong>Temporary password:</strong> ${password}</p>`,
+        `<p><a href="${escapeHtml(loginUrl)}">Sign in to ${brand}</a></p>`,
+        '<p>Please change your password after signing in.</p>',
+      ].join(''),
+    };
+    return email;
+  }
+
+  async queueInvitation(tx: Prisma.TransactionClient, email: QueuedEmail) {
+    return tx.mailQueueJob.create({
+      data: email,
+    });
   }
 
   /** Sends immediately, bypassing the queue — used by the "send test email" admin action for instant feedback. */

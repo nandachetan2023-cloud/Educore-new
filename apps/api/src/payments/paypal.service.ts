@@ -83,8 +83,13 @@ export class PayPalService {
     return { id: data.id, approveUrl: approve.href };
   }
 
-  /** Captures a previously-approved PayPal order. Returns the capture id (used as transactionId). */
-  async captureOrder(paypalOrderId: string): Promise<string> {
+  /** Captures a previously-approved order and returns its provider-verified details. */
+  async captureOrder(paypalOrderId: string): Promise<{
+    captureId: string;
+    referenceId: string;
+    amount: string;
+    currency: string;
+  }> {
     this.require();
     const token = await this.accessToken();
     const res = await fetch(`${this.baseUrl}/v2/checkout/orders/${paypalOrderId}/capture`, {
@@ -94,9 +99,29 @@ export class PayPalService {
     if (!res.ok) throw new ServiceUnavailableException('Could not capture PayPal payment');
     const data = (await res.json()) as {
       status: string;
-      purchase_units: { payments: { captures: { id: string }[] } }[];
+      purchase_units: {
+        reference_id: string;
+        amount: { value: string; currency_code: string };
+        payments: {
+          captures: {
+            id: string;
+            status: string;
+            amount: { value: string; currency_code: string };
+          }[];
+        };
+      }[];
     };
     if (data.status !== 'COMPLETED') throw new ServiceUnavailableException('PayPal payment was not completed');
-    return data.purchase_units[0]?.payments?.captures?.[0]?.id ?? paypalOrderId;
+    const purchaseUnit = data.purchase_units[0];
+    const capture = purchaseUnit?.payments?.captures?.[0];
+    if (!purchaseUnit || !capture || capture.status !== 'COMPLETED') {
+      throw new ServiceUnavailableException('PayPal did not return a completed capture');
+    }
+    return {
+      captureId: capture.id,
+      referenceId: purchaseUnit.reference_id,
+      amount: capture.amount.value,
+      currency: capture.amount.currency_code,
+    };
   }
 }

@@ -16,6 +16,7 @@
     "start:web": "node scripts/run-next.cjs start -p 3004",
     "build": "npm run build --workspace=@educore/api && npm run build --workspace=@educore/web",
     "db:generate": "npm run prisma:generate --workspace=@educore/api",
+    "db:push": "npm run prisma:push --workspace=@educore/api",
     "db:migrate": "npm run prisma:migrate --workspace=@educore/api",
     "db:seed": "npm run prisma:seed --workspace=@educore/api",
     "db:seed:demo": "npm run prisma:seed:demo --workspace=@educore/api",

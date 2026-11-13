@@ -31,8 +31,16 @@ describe('AuthService', () => {
     };
     raw = {
       tenant: { findUnique: jest.fn(), findFirst: jest.fn() },
-      user: { update: jest.fn().mockResolvedValue({}) },
-      admin: { update: jest.fn().mockResolvedValue({}) },
+      user: {
+        update: jest.fn().mockResolvedValue({}),
+        findFirst: jest.fn(),
+        findUnique: jest.fn().mockResolvedValue({ tokenVersion: 0 }),
+      },
+      admin: {
+        update: jest.fn().mockResolvedValue({}),
+        findFirst: jest.fn(),
+        findUnique: jest.fn().mockResolvedValue({ tokenVersion: 0 }),
+      },
     };
     raw.tenant.findUnique.mockResolvedValue({ status: 'active' });
     jwt = {
@@ -243,6 +251,15 @@ describe('AuthService', () => {
         principal: Principal.STUDENT,
         email: 'john@example.com',
         tenantId: 7,
+        tokenVersion: 0,
+      });
+
+      raw.user.findUnique.mockResolvedValue({
+        id: 1,
+        email: 'john@example.com',
+        role: 'student',
+        tenantId: 7,
+        tokenVersion: 0,
       });
 
       const result = await service.refresh('refresh-token');
@@ -257,10 +274,74 @@ describe('AuthService', () => {
       });
     });
 
+    it('uses the current admin role instead of stale token claims', async () => {
+      jwt.verifyAsync.mockResolvedValue({
+        sub: 9,
+        principal: Principal.ADMIN,
+        email: 'admin@example.com',
+        adminRole: 'super_admin',
+        tenantId: null,
+        tokenVersion: 0,
+        rememberMe: true,
+      });
+      raw.admin.findUnique.mockResolvedValue({
+        id: 9,
+        email: 'admin@example.com',
+        role: 'admin',
+        tenantId: null,
+        tokenVersion: 0,
+      });
+
+      await service.refresh('refresh-token');
+
+      expect(jwt.signAsync.mock.calls[0][0]).toEqual(expect.objectContaining({
+        sub: 9,
+        principal: Principal.ADMIN,
+        adminRole: 'admin',
+        tokenVersion: 0,
+      }));
+      expect(jwt.signAsync.mock.calls[1][0].rememberMe).toBe(true);
+    });
+
+    it('rejects refresh tokens revoked by a credential or role change', async () => {
+      jwt.verifyAsync.mockResolvedValue({
+        sub: 1,
+        principal: Principal.STUDENT,
+        tokenVersion: 2,
+      });
+      raw.user.findUnique.mockResolvedValue({
+        id: 1,
+        email: 'john@example.com',
+        role: 'student',
+        tenantId: 7,
+        tokenVersion: 3,
+      });
+
+      await expect(service.refresh('old-refresh-token')).rejects.toThrow(UnauthorizedException);
+      expect(jwt.signAsync).not.toHaveBeenCalled();
+    });
+
     it('throws UnauthorizedException for an invalid refresh token', async () => {
       jwt.verifyAsync.mockRejectedValue(new Error('jwt malformed'));
 
       await expect(service.refresh('bogus')).rejects.toThrow(UnauthorizedException);
+    });
+  });
+
+  describe('resetPassword', () => {
+    it('increments the token version to revoke existing refresh tokens', async () => {
+      raw.user.findFirst.mockResolvedValue({ id: 4 });
+
+      await expect(service.resetPassword('one-time-token', 'new-password-123')).resolves.toEqual({ ok: true });
+
+      expect(raw.user.update).toHaveBeenCalledWith(expect.objectContaining({
+        where: { id: 4 },
+        data: expect.objectContaining({
+          passwordResetToken: null,
+          passwordResetExpires: null,
+          tokenVersion: { increment: 1 },
+        }),
+      }));
     });
   });
 

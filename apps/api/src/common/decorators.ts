@@ -25,6 +25,8 @@ export interface AuthPrincipal {
   adminRole?: 'admin' | 'super_admin';
   /** The tenant this principal belongs to. Null/absent for the platform superadmin. */
   tenantId?: number | null;
+  /** Incremented to revoke refresh tokens after credential or privilege changes. */
+  tokenVersion?: number;
 }
 
 /** Injects the authenticated principal resolved by the JWT strategy. */

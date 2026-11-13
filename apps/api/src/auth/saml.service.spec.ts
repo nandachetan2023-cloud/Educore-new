@@ -115,6 +115,45 @@ describe('SamlService', () => {
     });
   });
 
+  it('loads SAML settings for a tenant selected by the superadmin wizard', async () => {
+    raw.ssoConfig.findUnique.mockResolvedValue(null);
+
+    await expect(service.getTenantConfig(1)).resolves.toMatchObject({
+      tenantId: 1,
+      enabled: false,
+      spMetadataUrl: expect.stringContaining('tenant=acme'),
+      acsUrl: 'https://learn.example.com/api/auth/saml/callback',
+    });
+    expect(raw.tenant.findUnique).toHaveBeenCalledWith({
+      where: { id: 1 },
+      select: { id: true },
+    });
+  });
+
+  it('saves SAML settings for a tenant and returns its setup URLs', async () => {
+    raw.ssoConfig.findUnique.mockResolvedValue(null);
+
+    const saved = await service.saveTenantConfig(1, {
+      enabled: false,
+      label: 'Company SSO',
+    });
+
+    expect(raw.ssoConfig.upsert).toHaveBeenCalledWith(expect.objectContaining({
+      where: { tenantId: 1 },
+      create: expect.objectContaining({ tenantId: 1, enabled: false, label: 'Company SSO' }),
+    }));
+    expect(saved).toMatchObject({
+      tenantId: 1,
+      enabled: false,
+      loginUrl: expect.stringContaining('tenant=acme'),
+    });
+  });
+
+  it('rejects SAML setup for a missing tenant', async () => {
+    raw.tenant.findUnique.mockResolvedValue(null);
+    await expect(service.getTenantConfig(999)).rejects.toThrow('Workspace not found');
+  });
+
   it('returns SP metadata pointing back at this tenant', async () => {
     raw.ssoConfig.findUnique.mockResolvedValue({
       enabled: true,

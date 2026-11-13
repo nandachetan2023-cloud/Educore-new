@@ -92,39 +92,39 @@ export function DirectoryShell({
   return (
     <div className="min-h-screen bg-surface">
       {/* ── Sidebar (desktop) ─────────────────────────── */}
-      <aside className="fixed left-0 top-0 z-40 hidden h-screen w-64 flex-col justify-between overflow-y-auto border-r border-[#1e293b] bg-[#0b1226] py-6 shadow-[0_1px_8px_rgba(0,0,0,0.35)] lg:flex">
+      <aside className="fixed left-0 top-0 z-40 hidden h-screen w-64 flex-col justify-between overflow-y-auto border-r border-white/10 bg-[#0b1226] py-5 shadow-[0_1px_8px_rgba(0,0,0,0.35)] lg:flex">
         <div className="flex flex-col gap-6">
           <div className="flex items-center gap-2.5 px-6">
             <div className="flex min-w-0 flex-col">
-              <BrandName className="truncate text-[15px] font-extrabold leading-tight text-ink" />
-              <span className="text-[11px] font-medium text-muted">{eyebrow}</span>
+              <BrandName className="truncate text-[15px] font-extrabold leading-tight text-white" />
+              <span className="text-[11px] font-medium text-slate-400">{eyebrow}</span>
             </div>
           </div>
 
           <div className="px-4">
-            <div className="flex items-center justify-between rounded-xl bg-surface px-4 py-2.5">
+            <div className="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 px-3.5 py-2.5">
               <div className="flex min-w-0 items-center gap-2.5">
                 <span className="grid h-6 w-6 shrink-0 place-items-center rounded-lg bg-brand text-[11px] font-bold text-white">
                   {workspace[0]?.toUpperCase() ?? 'W'}
                 </span>
-                <span className="truncate text-[13px] font-semibold text-ink">{workspace}</span>
+                <span className="truncate text-[13px] font-semibold text-slate-100">{workspace}</span>
               </div>
-              <ChevronsUpDown className="h-4 w-4 shrink-0 text-muted" />
+              <ChevronsUpDown className="h-4 w-4 shrink-0 text-slate-400" />
             </div>
           </div>
 
-          <nav className="flex flex-col gap-1 px-4">
+          <nav aria-label={`${eyebrow} navigation`} className="flex flex-col gap-2 px-3">
             {sections.map((section) => (
               <div key={section.heading}>
-                <p className="px-4 pb-1 pt-4 text-[10.5px] font-bold uppercase tracking-[0.12em] text-muted first:pt-0">
+                <p className="px-3 pb-2 pt-3 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500 first:pt-0">
                   {section.heading}
                 </p>
                 {section.links.map((l) => {
                   const active = isActive(pathname, l);
-                  const cls = `flex items-center gap-3 rounded-xl px-4 py-2.5 text-[13px] transition ${
+                  const cls = `flex items-center gap-3 rounded-lg border-l-2 px-3 py-2.5 text-[13px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand ${
                     active
-                      ? 'bg-brand font-semibold text-white shadow-sm'
-                      : 'font-medium text-muted hover:bg-surface hover:text-ink'
+                      ? 'border-brand bg-white/10 font-semibold text-white'
+                      : 'border-transparent font-medium text-slate-300 hover:border-white/10 hover:bg-white/5 hover:text-white'
                   }`;
                   const inner = (
                     <>
@@ -133,7 +133,7 @@ export function DirectoryShell({
                       {l.badge != null && l.badge > 0 && (
                         <span
                           className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${
-                            active ? 'bg-white/20 text-white' : 'bg-brand-soft text-brand'
+                            active ? 'bg-white/15 text-white' : 'bg-white/10 text-slate-200'
                           }`}
                         >
                           {l.badge}
@@ -162,28 +162,28 @@ export function DirectoryShell({
         </div>
 
         <div className="flex flex-col gap-3 px-4">
-          <div className="flex items-center gap-3 rounded-xl bg-surface px-4 py-3">
-            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-brand-soft text-xs font-bold text-brand">
+          <div className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/5 px-3 py-3">
+            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-white/10 text-xs font-bold text-white">
               {initials(userName || 'U')}
             </span>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-[13px] font-semibold text-ink">{userName}</p>
-              <p className="truncate text-[11px] text-muted">{userCaption}</p>
+              <p className="truncate text-[13px] font-semibold text-slate-100">{userName}</p>
+              <p className="truncate text-[11px] text-slate-400">{userCaption}</p>
             </div>
             <button
               onClick={onLogout}
               title="Sign out"
-              className="rounded-lg p-1.5 text-muted transition hover:bg-card hover:text-red-500"
+              className="rounded-lg p-1.5 text-slate-400 transition hover:bg-white/10 hover:text-red-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand"
             >
               <LogOut className="h-4 w-4" />
             </button>
           </div>
-          <div className="flex items-center gap-2 rounded-xl bg-green-500/10 px-4 py-2.5">
+          <div className="flex items-center gap-2 rounded-xl border border-green-400/10 bg-green-400/10 px-4 py-2.5">
             <span className="relative flex h-2 w-2">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-500 opacity-75" />
-              <span className="relative inline-flex h-2 w-2 rounded-full bg-green-600" />
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-300 opacity-75" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-green-300" />
             </span>
-            <span className="text-[11px] font-semibold text-green-700">Environment: Live</span>
+            <span className="text-[11px] font-semibold text-green-200">Environment: Live</span>
           </div>
         </div>
       </aside>
@@ -197,8 +197,8 @@ export function DirectoryShell({
         <nav className="flex gap-2 overflow-x-auto px-4 pb-3">
           {allLinks.map((l) => {
             const active = isActive(pathname, l);
-            const cls = `flex shrink-0 items-center gap-1.5 rounded-full px-4 py-2 text-[13px] font-semibold ${
-              active ? 'bg-brand text-white' : 'border border-line text-muted'
+            const cls = `flex shrink-0 items-center gap-1.5 rounded-full px-4 py-2 text-[13px] font-semibold transition-colors ${
+              active ? 'border border-brand/20 bg-brand-soft text-brand' : 'border border-line bg-card text-muted hover:bg-surface'
             }`;
             const inner = (
               <>

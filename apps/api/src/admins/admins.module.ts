@@ -151,6 +151,9 @@ export class AdminsService {
         ...(dto.password ? { password: await argon2.hash(dto.password) } : {}),
         ...(dto.role !== undefined ? { role: dto.role } : {}),
         ...(dto.tenantId !== undefined ? { tenantId } : {}),
+        ...(dto.password || dto.role !== undefined || dto.tenantId !== undefined
+          ? { tokenVersion: { increment: 1 } }
+          : {}),
       },
       select: {
         id: true,
@@ -182,7 +185,7 @@ export class AdminsService {
     }
     return this.prisma.admin.update({
       where: { id },
-      data: { role },
+      data: { role, tokenVersion: { increment: 1 } },
       select: { id: true, name: true, email: true, role: true },
     });
   }
@@ -229,7 +232,7 @@ export class AdminsService {
     }
     return this.prisma.admin.update({
       where: { id },
-      data: { tenantId },
+      data: { tenantId, tokenVersion: { increment: 1 } },
       select: {
         id: true,
         name: true,

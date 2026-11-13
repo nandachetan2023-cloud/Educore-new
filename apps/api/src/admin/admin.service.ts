@@ -1,8 +1,8 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import * as argon2 from 'argon2';
 import { randomBytes } from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
-import { MailService } from '../mail/mail.module';
+import { MailService, QueuedEmail } from '../mail/mail.module';
 
 /**
  * Back-office operations available only to admins: moderating the publish
@@ -165,6 +165,7 @@ export class AdminService {
         password: await argon2.hash(password),
         passwordResetToken: null,
         passwordResetExpires: null,
+        tokenVersion: { increment: 1 },
       },
     });
     return { ok: true, userId: id, email: user.email };
@@ -201,6 +202,7 @@ export class AdminService {
         ...(dto.headline !== undefined ? { headline: dto.headline } : {}),
         ...(dto.bio !== undefined ? { bio: dto.bio } : {}),
         ...(dto.password ? { password: await argon2.hash(dto.password) } : {}),
+        ...(dto.password || dto.role ? { tokenVersion: { increment: 1 } } : {}),
       },
       select: {
         id: true, name: true, email: true, role: true, approveStatus: true,
@@ -275,21 +277,42 @@ export class AdminService {
     if (existingUser) throw new ConflictException('A user with this email already exists');
     if (existingAdmin) throw new ConflictException('An admin with this email already exists');
     const tempPassword = dto.password?.trim() || randomBytes(6).toString('hex');
-    const user = await this.prisma.user.create({
-      data: {
+    let invitationEmail: QueuedEmail;
+    try {
+      invitationEmail = await this.mail.prepareInvitation({
+        to: email,
         name: dto.name.trim(),
-        email,
-        password: await argon2.hash(tempPassword),
         role: dto.role,
-        approveStatus: 'approved',
-        emailVerifiedAt: new Date(),
-        wallet: 0,
-      },
-      select: {
-        id: true, name: true, email: true, image: true, role: true,
-        approveStatus: true, createdAt: true,
-      },
+        password: tempPassword,
+      });
+    } catch (error) {
+      if (error instanceof ServiceUnavailableException) {
+        throw new ServiceUnavailableException(
+          'Email invitations are unavailable until SMTP is configured in Admin > Settings > Mail.',
+        );
+      }
+      throw error;
+    }
+    const passwordHash = await argon2.hash(tempPassword);
+    const user = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.user.create({
+        data: {
+          name: dto.name.trim(),
+          email,
+          password: passwordHash,
+          role: dto.role,
+          approveStatus: 'approved',
+          emailVerifiedAt: new Date(),
+          wallet: 0,
+        },
+        select: {
+          id: true, name: true, email: true, image: true, role: true,
+          approveStatus: true, createdAt: true,
+        },
+      });
+      await this.mail.queueInvitation(tx, invitationEmail);
+      return created;
     });
-    return { ...user, tempPassword: dto.password?.trim() ? undefined : tempPassword };
+    return { ...user, invitationEmailQueued: true };
   }
 }

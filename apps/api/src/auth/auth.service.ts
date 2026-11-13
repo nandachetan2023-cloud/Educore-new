@@ -161,7 +161,7 @@ export class AuthService {
     const rememberMe = dto.rememberMe === true;
     if (user.twoFactorEnabled) {
       const challengeToken = await this.jwt.signAsync(
-        { sub: user.id, principal: user.role as Principal, email: user.email, tenantId: user.tenantId, purpose: '2fa', rememberMe },
+        { sub: user.id, principal: user.role as Principal, email: user.email, tenantId: user.tenantId, tokenVersion: user.tokenVersion, purpose: '2fa', rememberMe },
         { secret: this.config.get<string>('jwt.refreshSecret'), expiresIn: '5m' },
       );
       return { requiresTwoFactor: true, challengeToken };
@@ -191,7 +191,7 @@ export class AuthService {
     const rememberMe = dto.rememberMe === true;
     if (account.twoFactorEnabled) {
       const challengeToken = await this.jwt.signAsync(
-        { sub: account.id, principal, email: account.email, adminRole: account.role, tenantId: account.tenantId, purpose: '2fa', rememberMe },
+        { sub: account.id, principal, email: account.email, adminRole: account.role, tenantId: account.tenantId, tokenVersion: account.tokenVersion, purpose: '2fa', rememberMe },
         { secret: this.config.get<string>('jwt.refreshSecret'), expiresIn: '5m' },
       );
       return { requiresTwoFactor: true, challengeToken };
@@ -268,9 +268,11 @@ export class AuthService {
     if (payload.principal === Principal.ADMIN) {
       const account = await this.raw.admin.findUnique({
         where: { id: payload.sub },
-        select: { id: true, email: true, role: true, tenantId: true, twoFactorSecret: true, twoFactorEnabled: true },
+        select: { id: true, email: true, role: true, tenantId: true, tokenVersion: true, twoFactorSecret: true, twoFactorEnabled: true },
       });
-      if (!account || !account.twoFactorEnabled || !account.twoFactorSecret) throw new UnauthorizedException('2FA is not enabled');
+      if (!account || (payload.tokenVersion ?? 0) !== account.tokenVersion || !account.twoFactorEnabled || !account.twoFactorSecret) {
+        throw new UnauthorizedException('2FA is not enabled or this challenge has been revoked');
+      }
       if (!verifyTotp(account.twoFactorSecret, code)) throw new UnauthorizedException('Invalid 2FA code');
       if (account.tenantId != null) await this.assertTenantActive(account.tenantId);
       await this.audit.log({ action: 'auth.login', entity: 'admin', entityId: account.id, actorId: account.id, actorName: account.email, actorRole: `${payload.principal}:${account.role}` });
@@ -285,9 +287,11 @@ export class AuthService {
 
     const account = await this.raw.user.findUnique({
       where: { id: payload.sub },
-      select: { id: true, email: true, role: true, tenantId: true, twoFactorSecret: true, twoFactorEnabled: true },
+      select: { id: true, email: true, role: true, tenantId: true, tokenVersion: true, twoFactorSecret: true, twoFactorEnabled: true },
     });
-    if (!account || !account.twoFactorEnabled || !account.twoFactorSecret) throw new UnauthorizedException('2FA is not enabled');
+    if (!account || (payload.tokenVersion ?? 0) !== account.tokenVersion || !account.twoFactorEnabled || !account.twoFactorSecret) {
+      throw new UnauthorizedException('2FA is not enabled or this challenge has been revoked');
+    }
     if (!verifyTotp(account.twoFactorSecret, code)) throw new UnauthorizedException('Invalid 2FA code');
     await this.assertTenantActive(account.tenantId);
     await this.audit.log({ action: 'auth.login', entity: 'user', entityId: account.id, actorId: account.id, actorName: account.email, actorRole: account.role });
@@ -305,18 +309,48 @@ export class AuthService {
         secret: this.config.get<string>('jwt.refreshSecret'),
       });
       if (payload?.purpose === '2fa') throw new UnauthorizedException('Invalid refresh token');
-      if (payload.tenantId != null) {
-        await this.assertTenantActive(payload.tenantId);
+
+      let current: AuthPrincipal;
+      if (payload.principal === Principal.ADMIN) {
+        const account = await this.raw.admin.findUnique({
+          where: { id: payload.sub },
+          select: { id: true, email: true, role: true, tenantId: true, tokenVersion: true },
+        });
+        if (!account || (payload.tokenVersion ?? 0) !== account.tokenVersion) {
+          throw new UnauthorizedException('Invalid or revoked refresh token');
+        }
+        if (account.tenantId != null) await this.assertTenantActive(account.tenantId);
+        current = {
+          sub: account.id,
+          principal: Principal.ADMIN,
+          email: account.email,
+          adminRole: account.role,
+          tenantId: account.tenantId,
+          tokenVersion: account.tokenVersion,
+        };
+      } else if (payload.principal === Principal.STUDENT || payload.principal === Principal.INSTRUCTOR) {
+        const account = await this.raw.user.findUnique({
+          where: { id: payload.sub },
+          select: { id: true, email: true, role: true, tenantId: true, tokenVersion: true },
+        });
+        if (!account || (payload.tokenVersion ?? 0) !== account.tokenVersion) {
+          throw new UnauthorizedException('Invalid or revoked refresh token');
+        }
+        await this.assertTenantActive(account.tenantId);
+        current = {
+          sub: account.id,
+          principal: account.role as Principal,
+          email: account.email,
+          tenantId: account.tenantId,
+          tokenVersion: account.tokenVersion,
+        };
+      } else {
+        throw new UnauthorizedException('Invalid refresh token');
       }
-      return this.issueTokens({
-        sub: payload.sub,
-        principal: payload.principal,
-        email: payload.email,
-        adminRole: payload.adminRole,
-        tenantId: payload.tenantId,
-      }, payload.rememberMe === true);
+      return this.issueTokens(current, payload.rememberMe === true);
     } catch (err) {
       if (err instanceof TenantSuspendedException) throw err;
+      if (err instanceof UnauthorizedException) throw err;
       throw new UnauthorizedException('Invalid or expired refresh token');
     }
   }
@@ -383,13 +417,29 @@ export class AuthService {
     const user = await this.raw.user.findFirst({ where: { passwordResetToken: token, passwordResetExpires: { gt: new Date() } } });
     if (user) {
       const hash = await argon2.hash(password);
-      await this.raw.user.update({ where: { id: user.id }, data: { password: hash, passwordResetToken: null, passwordResetExpires: null } });
+      await this.raw.user.update({
+        where: { id: user.id },
+        data: {
+          password: hash,
+          passwordResetToken: null,
+          passwordResetExpires: null,
+          tokenVersion: { increment: 1 },
+        },
+      });
       return { ok: true };
     }
     const admin = await this.raw.admin.findFirst({ where: { passwordResetToken: token, passwordResetExpires: { gt: new Date() } } });
     if (admin) {
       const hash = await argon2.hash(password);
-      await this.raw.admin.update({ where: { id: admin.id }, data: { password: hash, passwordResetToken: null, passwordResetExpires: null } });
+      await this.raw.admin.update({
+        where: { id: admin.id },
+        data: {
+          password: hash,
+          passwordResetToken: null,
+          passwordResetExpires: null,
+          tokenVersion: { increment: 1 },
+        },
+      });
       return { ok: true };
     }
     throw new UnauthorizedException('Invalid or expired reset token');
@@ -473,7 +523,7 @@ export class AuthService {
       }
       await this.raw.admin.update({
         where: { id: principal.sub },
-        data: { password: await argon2.hash(newPassword) },
+        data: { password: await argon2.hash(newPassword), tokenVersion: { increment: 1 } },
       });
       return { ok: true };
     }
@@ -484,7 +534,7 @@ export class AuthService {
     }
     await this.raw.user.update({
       where: { id: principal.sub },
-      data: { password: await argon2.hash(newPassword) },
+      data: { password: await argon2.hash(newPassword), tokenVersion: { increment: 1 } },
     });
     return { ok: true };
   }
@@ -656,12 +706,14 @@ export class AuthService {
   }
 
   private async issueTokens(payload: AuthPrincipal, rememberMe = true) {
+    const tokenVersion = payload.tokenVersion ?? await this.getTokenVersion(payload);
+    const tokenPayload = { ...payload, tokenVersion };
     const [accessToken, refreshToken] = await Promise.all([
-      this.jwt.signAsync(payload, {
+      this.jwt.signAsync(tokenPayload, {
         secret: this.config.get<string>('jwt.accessSecret'),
         expiresIn: this.config.get<string>('jwt.accessTtl'),
       }),
-      this.jwt.signAsync({ ...payload, rememberMe }, {
+      this.jwt.signAsync({ ...tokenPayload, rememberMe }, {
         secret: this.config.get<string>('jwt.refreshSecret'),
         expiresIn: rememberMe
           ? this.config.get<string>('jwt.refreshTtl')
@@ -669,5 +721,13 @@ export class AuthService {
       }),
     ]);
     return { accessToken, refreshToken, principal: payload.principal };
+  }
+
+  private async getTokenVersion(payload: AuthPrincipal): Promise<number> {
+    const account = payload.principal === Principal.ADMIN
+      ? await this.raw.admin.findUnique({ where: { id: payload.sub }, select: { tokenVersion: true } })
+      : await this.raw.user.findUnique({ where: { id: payload.sub }, select: { tokenVersion: true } });
+    if (!account) throw new UnauthorizedException('Account no longer exists');
+    return account.tokenVersion;
   }
 }

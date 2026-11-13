@@ -28,9 +28,9 @@ export class OrdersService {
     private config: ConfigService,
   ) {}
 
-  /** Mock checkout exists only outside production so local/dev installs can pay end-to-end. */
+  /** Mock checkout requires explicit opt-in and is always disabled in production. */
   private get mockEnabled() {
-    return this.config.get<string>('env') !== 'production';
+    return this.config.get<boolean>('mockPaymentsEnabled') === true;
   }
 
   /** Which gateways are actually usable on this install (have credentials configured). */
@@ -71,6 +71,9 @@ export class OrdersService {
     const currency = this.config.get<string>('brand.currency')!;
     const commissionRate = this.config.get<number>('brand.commissionRate')!;
     const total = promo.total;
+    if (gateway === 'mock' && total > 0 && !this.mockEnabled) {
+      throw new BadRequestException('Unknown payment gateway');
+    }
     const discounted = promo.discountTotal > 0;
     const pricedByCourse = new Map(promo.priced.lines.map((l) => [l.courseId, l]));
 
@@ -116,10 +119,6 @@ export class OrdersService {
       };
     }
 
-    if (gateway === 'mock') {
-      if (!this.mockEnabled) throw new BadRequestException('Unknown payment gateway');
-    }
-
     const web = this.config.get<string>('webUrl');
     const receipt = {
       subtotal: promo.subtotal,
@@ -147,6 +146,10 @@ export class OrdersService {
         returnUrl: `${web}/checkout/paypal/return?order=${order.id}`,
         cancelUrl: `${web}/cart?canceled=1`,
       });
+      await this.prisma.order.update({
+        where: { id: order.id },
+        data: { providerOrderId: paypalOrder.id },
+      });
       return { free: false, orderId: order.id, checkoutUrl: paypalOrder.approveUrl, ...receipt };
     }
 
@@ -155,6 +158,14 @@ export class OrdersService {
         orderId: order.id,
         currency,
         amountMinor: Math.round(total * 100),
+      });
+      if (rpOrder.amount !== Math.round(total * 100)
+        || rpOrder.currency.toUpperCase() !== currency.toUpperCase()) {
+        throw new BadRequestException('Razorpay order amount or currency did not match');
+      }
+      await this.prisma.order.update({
+        where: { id: order.id },
+        data: { providerOrderId: rpOrder.id },
       });
       return {
         free: false,
@@ -189,8 +200,18 @@ export class OrdersService {
   async capturePaypal(userId: number, orderId: number, paypalOrderId: string) {
     const order = await this.getForUser(userId, orderId);
     if (order.status === 'approved') return { ok: true }; // already fulfilled
-    const captureId = await this.paypal.captureOrder(paypalOrderId);
-    await this.fulfill(orderId, captureId);
+    if (order.paymentMethod !== 'paypal'
+      || !order.providerOrderId
+      || paypalOrderId !== order.providerOrderId) {
+      throw new BadRequestException('PayPal order does not match this checkout');
+    }
+    const capture = await this.paypal.captureOrder(paypalOrderId);
+    if (capture.referenceId !== String(order.id)
+      || Math.round(Number(capture.amount) * 100) !== Math.round(order.totalAmount * 100)
+      || capture.currency.toUpperCase() !== order.currency.toUpperCase()) {
+      throw new BadRequestException('PayPal payment details do not match this order');
+    }
+    await this.fulfill(orderId, capture.captureId);
     return { ok: true };
   }
 
@@ -202,7 +223,12 @@ export class OrdersService {
   ) {
     const order = await this.getForUser(userId, orderId);
     if (order.status === 'approved') return { ok: true };
-    if (!(await this.razorpay.verifySignature(payload))) {
+    if (order.paymentMethod !== 'razorpay' || !order.providerOrderId || !(await this.razorpay.verifyPayment({
+      ...payload,
+      expectedOrderId: order.providerOrderId,
+      expectedAmountMinor: Math.round(order.totalAmount * 100),
+      expectedCurrency: order.currency,
+    }))) {
       throw new BadRequestException('Payment verification failed');
     }
     await this.fulfill(orderId, payload.razorpayPaymentId);
@@ -222,18 +248,19 @@ export class OrdersService {
     if (!order) throw new NotFoundException('Order not found');
     if (order.status === 'approved') return; // already fulfilled — no-op
 
-    const courseIds = order.items.map((i) => i.courseId);
-    const courses = await this.prisma.course.findMany({
-      where: { id: { in: courseIds } },
-      select: { id: true, instructorId: true },
-    });
-    const instructorOf = new Map(courses.map((c) => [c.id, c.instructorId]));
-
-    await this.prisma.$transaction(async (tx) => {
-      await tx.order.update({
-        where: { id: orderId },
+    const fulfilled = await this.prisma.$transaction(async (tx) => {
+      const claim = await tx.order.updateMany({
+        where: { id: orderId, status: 'pending' },
         data: { status: 'approved', paidAmount: order.totalAmount, transactionId },
       });
+      if (claim.count === 0) return false;
+
+      const courseIds = order.items.map((i) => i.courseId);
+      const courses = await tx.course.findMany({
+        where: { id: { in: courseIds } },
+        select: { id: true, instructorId: true },
+      });
+      const instructorOf = new Map(courses.map((c) => [c.id, c.instructorId]));
 
       for (const item of order.items) {
         const instructorId = instructorOf.get(item.courseId);
@@ -268,8 +295,11 @@ export class OrdersService {
       await tx.cart.deleteMany({
         where: { userId: order.buyerId, courseId: { in: courseIds } },
       });
+      return true;
     });
+    if (!fulfilled) return;
 
+    const courseIds = order.items.map((i) => i.courseId);
     // Coupon/offer usage is only counted once money actually changed hands.
     const discount = Math.max(order.couponAmount ?? 0, order.offerAmount ?? 0);
     if (discount > 0) {

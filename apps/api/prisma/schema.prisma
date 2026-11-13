@@ -211,6 +211,7 @@ model Admin {
   name            String
   email           String    @unique
   role            AdminRole @default(admin)
+  tokenVersion    Int       @default(0) @map("token_version")
   emailVerifiedAt DateTime? @map("email_verified_at")
   emailVerifyToken String?  @map("email_verify_token")
   emailVerifyExpires DateTime? @map("email_verify_expires")
@@ -236,6 +237,7 @@ model User {
   id              Int           @id @default(autoincrement())
   tenantId        Int           @default(0) @map("tenant_id")
   role            UserRole
+  tokenVersion    Int           @default(0) @map("token_version")
   image           String        @default("/default-files/avatar.png")
   name            String
   headline        String?
@@ -522,6 +524,7 @@ model Order {
   offerTitle    String?     @map("offer_title")
   offerAmount   Float?      @map("offer_amount")
   transactionId String      @map("transaction_id")
+  providerOrderId String?   @map("provider_order_id")
   paymentMethod String      @map("payment_method")
   createdAt     DateTime    @default(now()) @map("created_at")
   updatedAt     DateTime    @updatedAt @map("updated_at")

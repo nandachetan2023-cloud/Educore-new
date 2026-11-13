@@ -69,6 +69,15 @@ describe('discount engine', () => {
       expect(total).toBe(round2(100 * 0.15));
     });
 
+    it('caps a fixed discount at the configured maximum', () => {
+      const { total, perCourse } = computeDiscount(rule({ type: 'fixed', value: 80, maxDiscount: 15 }), [
+        course(1, 50),
+        course(2, 40),
+      ]);
+      expect(total).toBe(15);
+      expect(round2([...perCourse.values()].reduce((s, v) => s + v, 0))).toBe(total);
+    });
+
     it('ignores free and zero-value items', () => {
       const { total } = computeDiscount(rule({ value: 50 }), [course(1, 0)]);
       expect(total).toBe(0);

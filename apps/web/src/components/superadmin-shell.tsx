@@ -28,6 +28,7 @@ export function SuperAdminShell({ children }: { children: React.ReactNode }) {
           links: [
             { href: '/dashboard/superadmin', label: 'Dashboard', icon: LayoutDashboard },
             { href: '/dashboard/superadmin/tenants', label: 'Tenants', icon: Building2 },
+            { href: '/dashboard/superadmin/setup-wizard', label: 'Setup wizard', icon: ShieldCheck },
             { href: '/dashboard/superadmin/plans', label: 'Plans', icon: CreditCard },
             { href: '/dashboard/superadmin/admins', label: 'Platform staff', icon: Users },
             { href: '/dashboard/superadmin/users', label: 'All users', icon: ShieldCheck },

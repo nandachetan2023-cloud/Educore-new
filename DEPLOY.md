@@ -52,6 +52,8 @@ WEB_PORT=3004
 DATABASE_URL=postgresql://...
 JWT_ACCESS_SECRET=...
 JWT_REFRESH_SECRET=...
+# Optional only for local development; never enable for a production deployment.
+ENABLE_MOCK_PAYMENTS=false
 MAIL_HOST=...
 BRAND_NAME=EduCore
 NEXT_PUBLIC_API_URL=https://platform.example.com/api
@@ -66,6 +68,7 @@ npx prisma db execute --file prisma/migrations/password_reset_and_coupon_approva
 npx prisma db execute --file prisma/migrations/two_factor_auth.sql
 npx prisma db execute --file prisma/migrations/email_verification.sql
 npx prisma db execute --file prisma/migrations/sso_config.sql
+npx prisma db execute --file prisma/migrations/auth_token_version_and_provider_order.sql
 npx prisma db seed   # only for first admin
 ```
 > `prisma migrate deploy` fails with P3005 on an existing database unless it is

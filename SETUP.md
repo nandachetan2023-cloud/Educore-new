@@ -25,17 +25,22 @@ This installs packages for both the API and the web app (npm workspaces).
 
 ## 2. Configure environment — API
 
-Copy the example file and edit it:
+Copy the root example file and edit it:
 
 ```
-copy apps\api\.env.example apps\api\.env
+copy .env.example .env
 ```
 
-Open `apps\api\.env` and fill in at minimum:
+Open `.env` and fill in at minimum:
 
 ```env
 # PostgreSQL connection string
 DATABASE_URL="postgresql://YOUR_USER:YOUR_PASSWORD@localhost:5432/educore"
+
+# Set these before seeding demo accounts
+SEED_ADMIN_PASSWORD=replace-with-a-local-demo-password
+SEED_USER_PASSWORD=replace-with-a-local-demo-password
+SEED_STAFF_PASSWORD=replace-with-a-local-demo-password
 
 # Change these to random secrets before going live
 JWT_ACCESS_SECRET=any-long-random-string
@@ -45,8 +50,24 @@ JWT_REFRESH_SECRET=another-long-random-string
 API_PORT=4000
 ```
 
-Payment gateways and mail are **optional** for local development.  
-They can also be configured later from the Admin panel.
+For manual setup, copy the configured root `.env` to `apps\api\.env` before
+running Prisma commands. `educore-setup.bat` does this automatically.
+
+Payment gateways and mail are **optional** for local development. To send team
+invitations by email, configure SMTP in the root `.env` file:
+
+```env
+MAIL_HOST=smtp.gmail.com
+MAIL_PORT=587
+MAIL_USER=your-sender@gmail.com
+MAIL_PASSWORD=your-google-app-password
+MAIL_FROM=EduCore <your-sender@gmail.com>
+```
+
+For Gmail, use an **App Password**, not your regular Google password. Keep
+these credentials private and do not commit them. After saving `.env`, restart
+the API, then try the invitation again. SMTP is currently configured through
+`.env`; there is no mail-settings page in the web Admin panel.
 
 ---
 
@@ -78,29 +99,35 @@ Create the database in PostgreSQL first:
 CREATE DATABASE educore;
 ```
 
-Then run migrations and seed initial data:
+Then synchronize the Prisma schema and seed initial data:
 
 ```
-cd educore
-npm run db:migrate
+copy .env apps\api\.env
+npm run db:push
 npm run db:seed
 ```
+
+This project uses `prisma db push` for schema synchronization and keeps
+additional hand-written SQL migrations under `apps\api\prisma\migrations`.
+Do not use `npm run db:migrate` as a substitute for applying those SQL files.
+The automated Windows setup also runs `prisma db push`.
 
 The seed creates:
 - Sample categories, levels, and languages
 - The default accounts below
 
-### Default accounts
+### Demo accounts
 
-| Role | Email | Password | Notes |
-|------|-------|----------|-------|
-| Super Admin | `superadmin@gmail.com` | `password` | Tick "Log in as administrator" |
-| Admin | `admin@gmail.com` | `password` | Tick "Log in as administrator" |
-| Instructor | `instructor@gmail.com` | `12345678` | Instructor dashboard |
-| Student | `user@gmail.com` | `12345678` | Student dashboard |
+| Role | Email | Password comes from |
+|------|-------|----------------------|
+| Super Admin | `superadmin@gmail.com` | `SEED_ADMIN_PASSWORD` |
+| Admin | `admin@gmail.com` | `SEED_ADMIN_PASSWORD` |
+| Instructor | `instructor@gmail.com` | `SEED_STAFF_PASSWORD` |
+| Student | `user@gmail.com` | `SEED_USER_PASSWORD` |
 
-> These are demo credentials from `apps\api\prisma\seed.ts`. Change or remove
-> them before going live. They are intentionally not shown on the login page.
+> The seed requires all three password variables and provides no defaults.
+> Use unique local demo values, never production credentials. Change or remove
+> seeded accounts before going live.
 
 ---
 
@@ -163,7 +190,8 @@ From the admin console you can:
 | `npm run build` | Build both API and web |
 | `npm run dev:api` | API with hot-reload |
 | `npm run dev:web` | Web with hot-reload |
-| `npm run db:migrate` | Run Prisma migrations |
+| `npm run db:push` | Synchronize the database schema with Prisma |
+| `npm run db:migrate` | Prisma migration workflow; not the repository's SQL migration process |
 | `npm run db:seed` | Seed initial data |
 | `npm run db:studio` | Open Prisma Studio (DB browser) |
 
@@ -199,7 +227,10 @@ build output and API health.
 Change `API_PORT` in `apps\api\.env` and `API_URL` in `apps\web\.env.local` to match.
 
 **Database connection error**  
-Verify PostgreSQL is running and `DATABASE_URL` in `.env` is correct.
+Verify PostgreSQL is running and `DATABASE_URL` in `.env` is correct. If the
+API is reachable but a page reports "Database error", run `npm run db:push`
+from the project root and restart the API so the database has the current
+Prisma columns.
 
 **API starts but web shows errors**  
 Make sure the API is running; the web app reaches it same-origin via `/api`

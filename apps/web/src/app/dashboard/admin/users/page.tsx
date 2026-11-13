@@ -326,18 +326,14 @@ export default function UserDirectoryPage() {
     setInviteBusy(true);
     setErr(null);
     try {
-      const res = await api<{ id: number; tempPassword?: string }>('/admin/users', {
+      const res = await api<{ id: number; invitationEmailQueued: boolean }>('/admin/users', {
         method: 'POST',
         body: JSON.stringify(inviteForm),
       });
       setInviteOpen(false);
       setInviteForm({ name: '', email: '', role: 'student' });
       load();
-      showToast(
-        res.tempPassword
-          ? `Account created. One-time password: ${res.tempPassword}`
-          : 'Account created.',
-      );
+      showToast(res.invitationEmailQueued ? `Invitation email queued for ${inviteForm.email}.` : 'Account created.');
     } catch (e2) {
       setErr(e2 instanceof ApiError ? e2.message : 'Failed to create account');
     } finally {
@@ -868,7 +864,7 @@ export default function UserDirectoryPage() {
               </div>
               <div className="flex items-center gap-2 rounded-xl bg-surface p-3.5 text-[13px] text-muted">
                 <BadgeCheck className="h-4 w-4 shrink-0 text-green-600" />
-                Invited accounts are approved immediately — a one-time password is shown after creation.
+                Invited accounts are approved immediately. A temporary password and sign-in link will be emailed to this address.
               </div>
               <div className="flex justify-end gap-2.5 border-t border-line pt-4">
                 <button type="button" onClick={() => setInviteOpen(false)} className="rounded-xl px-5 py-2.5 text-sm font-semibold text-muted hover:text-ink">

@@ -294,6 +294,25 @@ export class SamlService {
     };
   }
 
+  async getTenantConfig(tenantId: number) {
+    const tenant = await this.raw.tenant.findUnique({
+      where: { id: tenantId },
+      select: { id: true },
+    });
+    if (!tenant) throw new NotFoundException('Workspace not found');
+    return this.getConfig(tenantId);
+  }
+
+  async saveTenantConfig(tenantId: number, dto: SsoConfigDto) {
+    const tenant = await this.raw.tenant.findUnique({
+      where: { id: tenantId },
+      select: { id: true },
+    });
+    if (!tenant) throw new NotFoundException('Workspace not found');
+    await this.saveConfig(tenantId, dto);
+    return this.getConfig(tenantId);
+  }
+
   /**
    * Creates/updates the tenant config. When a metadata URL is supplied we fetch
    * it first so a typo fails immediately instead of at first login.

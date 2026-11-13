@@ -150,4 +150,74 @@ describe('RazorpayService', () => {
       ).resolves.toBe(false);
     });
   });
+
+  describe('verifyPayment', () => {
+    it('checks the signed provider order and captured amount/currency', async () => {
+      const { createHmac } = await import('crypto');
+      const signature = createHmac('sha256', 'storedsecret')
+        .update('order_1|pay_1')
+        .digest('hex');
+      const { service } = build([{ key: 'razorpay.keySecret', value: 'storedsecret' }]);
+      const fetchSpy = jest.spyOn(globalThis, 'fetch').mockResolvedValue(
+        new Response(JSON.stringify({
+          order_id: 'order_1',
+          amount: 12500,
+          currency: 'INR',
+          status: 'captured',
+        }), { status: 200 }),
+      );
+
+      try {
+        await expect(service.verifyPayment({
+          razorpayOrderId: 'order_1',
+          razorpayPaymentId: 'pay_1',
+          signature,
+          expectedOrderId: 'order_1',
+          expectedAmountMinor: 12500,
+          expectedCurrency: 'INR',
+        })).resolves.toBe(true);
+
+        await expect(service.verifyPayment({
+          razorpayOrderId: 'order_1',
+          razorpayPaymentId: 'pay_1',
+          signature,
+          expectedOrderId: 'another-order',
+          expectedAmountMinor: 12500,
+          expectedCurrency: 'INR',
+        })).resolves.toBe(false);
+        expect(fetchSpy).toHaveBeenCalledTimes(1);
+      } finally {
+        fetchSpy.mockRestore();
+      }
+    });
+
+    it('rejects a provider payment with a different amount', async () => {
+      const { createHmac } = await import('crypto');
+      const signature = createHmac('sha256', 'storedsecret')
+        .update('order_1|pay_1')
+        .digest('hex');
+      const { service } = build([{ key: 'razorpay.keySecret', value: 'storedsecret' }]);
+      const fetchSpy = jest.spyOn(globalThis, 'fetch').mockResolvedValue(
+        new Response(JSON.stringify({
+          order_id: 'order_1',
+          amount: 1,
+          currency: 'INR',
+          status: 'captured',
+        }), { status: 200 }),
+      );
+
+      try {
+        await expect(service.verifyPayment({
+          razorpayOrderId: 'order_1',
+          razorpayPaymentId: 'pay_1',
+          signature,
+          expectedOrderId: 'order_1',
+          expectedAmountMinor: 12500,
+          expectedCurrency: 'INR',
+        })).resolves.toBe(false);
+      } finally {
+        fetchSpy.mockRestore();
+      }
+    });
+  });
 });

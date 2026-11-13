@@ -255,6 +255,18 @@ if exist "%ROOT%\.educore-seeded" (
 )
 echo  Seeding database with demo data...
 echo  NOTE: the seed resets demo tenants/users/courses.
+call :check_seed_passwords
+if errorlevel 1 (
+  echo  Opening the root .env so you can set the demo passwords...
+  notepad.exe "%ROOT%\.env"
+  call :check_seed_passwords
+)
+if errorlevel 1 (
+  echo  ERROR: Configure all three SEED_*_PASSWORD values in the root .env
+  echo  before running setup. The seed has no default passwords.
+  pause
+  exit /b 1
+)
 :: The seed imports @prisma/client directly. If the generated client
 :: is missing (failed/old-skipped generate, wiped node_modules) its
 :: stub does not throw on import - the class it exports throws on
@@ -376,17 +388,23 @@ if "%SERVER_MODE%"=="1" (
   echo    and that both machines are on the same network.
 )
 echo.
-echo    Default login credentials  (log in at /login^)
-echo    All demo passwords are "password".
+echo    Demo login accounts  (log in at /login^)
 echo    +--------------------------------------------------+
 echo    Role          Email                 Password
 echo    ----------------------------------------------------
-echo    Super Admin   superadmin@gmail.com  password
-echo    Admin         admin@gmail.com       password
-echo    Instructor    instructor@gmail.com  password
-echo    Student       user@gmail.com        password
+echo    Super Admin   superadmin@gmail.com  SEED_ADMIN_PASSWORD
+echo    Admin         admin@gmail.com       SEED_ADMIN_PASSWORD
+echo    Instructor    instructor@gmail.com  SEED_STAFF_PASSWORD
+echo    Student       user@gmail.com        SEED_USER_PASSWORD
 echo    +--------------------------------------------------+
+echo    Passwords are configured in the root .env file.
 echo    Tick "administrator" for the two admin tiers.
+echo.
+echo    Superadmin shortcuts:
+echo    New or existing tenant setup:
+echo      %WEB_ORIGIN%/dashboard/superadmin/setup-wizard
+echo    White-label logo and favicon:
+echo      %WEB_ORIGIN%/dashboard/superadmin/white-label
 echo.
 echo    Both servers are open in separate windows.
 echo    Close those windows to stop the servers.
@@ -565,6 +583,15 @@ exit /b 0
 :: ══════════════════════════════════════════════════════
 :pg_check
 powershell -NoProfile -NonInteractive -Command "try { $c = New-Object Net.Sockets.TcpClient('%DBHOST%', %DBPORT%); $c.Close(); exit 0 } catch { exit 1 }" >nul 2>&1
+exit /b
+
+:: ══════════════════════════════════════════════════════
+:: Subroutine: require explicit demo seed passwords.
+:: Do not print secret values to the console.
+:: ══════════════════════════════════════════════════════
+:check_seed_passwords
+set "EDU_ENV=%ROOT%\.env"
+powershell -NoProfile -NonInteractive -Command "$p=$env:EDU_ENV; $values=@{}; foreach($line in [System.IO.File]::ReadAllLines($p)){ if($line -match '^\s*(SEED_ADMIN_PASSWORD|SEED_USER_PASSWORD|SEED_STAFF_PASSWORD)\s*=\s*(.*)$'){ $values[$matches[1]]=$matches[2].Trim().Trim([char]34).Trim([char]39) } }; $missing=@('SEED_ADMIN_PASSWORD','SEED_USER_PASSWORD','SEED_STAFF_PASSWORD') | Where-Object { -not $values.ContainsKey($_) -or [string]::IsNullOrWhiteSpace($values[$_]) }; if($missing.Count){ Write-Host ('Missing or empty: ' + ($missing -join ', ')); exit 1 }; exit 0"
 exit /b
 
 :: ══════════════════════════════════════════════════════

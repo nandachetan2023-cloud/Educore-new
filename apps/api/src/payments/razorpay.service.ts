@@ -132,4 +132,35 @@ export class RazorpayService implements OnModuleInit {
     const b = Buffer.from(params.signature ?? '');
     return a.length === b.length && timingSafeEqual(a, b);
   }
+
+  /** Confirms the signed payment also belongs to this order and was captured. */
+  async verifyPayment(params: {
+    razorpayOrderId: string;
+    razorpayPaymentId: string;
+    signature: string;
+    expectedOrderId: string;
+    expectedAmountMinor: number;
+    expectedCurrency: string;
+  }): Promise<boolean> {
+    if (params.razorpayOrderId !== params.expectedOrderId) return false;
+    if (!(await this.verifySignature(params))) return false;
+
+    const cfg = await this.require();
+    const res = await fetch(
+      `${this.baseUrl}/payments/${encodeURIComponent(params.razorpayPaymentId)}`,
+      { headers: { Authorization: this.authHeader(cfg) } },
+    );
+    if (!res.ok) throw new ServiceUnavailableException('Could not verify Razorpay payment');
+    const payment = (await res.json()) as {
+      order_id: string;
+      amount: number;
+      currency: string;
+      status: string;
+      captured?: boolean;
+    };
+    return payment.order_id === params.expectedOrderId
+      && payment.amount === params.expectedAmountMinor
+      && payment.currency.toUpperCase() === params.expectedCurrency.toUpperCase()
+      && (payment.status === 'captured' || payment.captured === true);
+  }
 }

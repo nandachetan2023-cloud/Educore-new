@@ -113,7 +113,23 @@ export function computeDiscount(
     perCourse.set(c.id, take);
     remaining = round2(remaining - take);
   }
-  const total = round2([...perCourse.values()].reduce((s, v) => s + v, 0));
+
+  let total = round2([...perCourse.values()].reduce((s, v) => s + v, 0));
+  if (rule.maxDiscount != null) {
+    const cap = round2(rule.maxDiscount);
+    if (total > cap) {
+      let reduction = round2(total - cap);
+      for (const c of [...eligible].sort((a, b) => b.base - a.base)) {
+        const current = perCourse.get(c.id) ?? 0;
+        if (current <= 0) continue;
+        const take = Math.min(current, reduction);
+        perCourse.set(c.id, round2(current - take));
+        reduction = round2(reduction - take);
+        if (reduction <= 0) break;
+      }
+      total = round2([...perCourse.values()].reduce((s, v) => s + v, 0));
+    }
+  }
   return { total, perCourse };
 }
 

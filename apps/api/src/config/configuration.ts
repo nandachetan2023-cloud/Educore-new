@@ -1,5 +1,7 @@
-export default () => ({
+const buildConfiguration = () => ({
   env: process.env.NODE_ENV ?? 'development',
+  mockPaymentsEnabled: (process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test')
+    && process.env.ENABLE_MOCK_PAYMENTS === 'true',
   port: parseInt(process.env.API_PORT ?? '4000', 10),
   apiUrl: process.env.API_URL ?? `http://localhost:${process.env.API_PORT ?? '4000'}`,
   webUrl: process.env.WEB_URL ?? 'http://localhost:3000',
@@ -79,3 +81,13 @@ export default () => ({
     },
   },
 });
+
+export default () => {
+  const nodeEnv = process.env.NODE_ENV;
+  const accessSecret = process.env.JWT_ACCESS_SECRET;
+  const refreshSecret = process.env.JWT_REFRESH_SECRET;
+  if ((nodeEnv ?? 'development') === 'production' && (!accessSecret || !refreshSecret)) {
+    throw new Error('JWT_ACCESS_SECRET and JWT_REFRESH_SECRET must be set in production');
+  }
+  return buildConfiguration();
+};
